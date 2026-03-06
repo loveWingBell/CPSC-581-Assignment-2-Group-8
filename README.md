@@ -3,7 +3,6 @@
 # DONE
 
 ### Phase 1 — Get Two Screens Talking (WebRTC)
-Currently got two browser windows, one showing the other's Blender screen live. Should later alter so that you can choose the view/something more """professional""
 ---
 # WHAT'S LEFT
 
