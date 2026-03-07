@@ -2,19 +2,16 @@
 
 # DONE
 
-# WIP
-
 ### Phase 1 — Get Two Screens Talking (WebRTC)
 
 # WIP
-
-# WHAT'S LEFT
-
 ### Phase 2 — Canvas Overlay
 - Place a transparent `<canvas>` element directly over the video stream on both sides.
 - Everything visual — ghost cursor, sonar rings, sticky notes, directional glow — gets drawn here.
 - When the expert moves their cursor over their canvas, send those `{x, y, type: "world_space" | "ui_element"}` coordinates through the data channel. The novice's canvas receives them and draws the ghost cursor in sync.
 At the end of this phase: expert moves mouse, novice sees a ghost cursor replayed on their screen.
+
+# WHAT'S LEFT
 ### Phase 3 — Stuck Detection
 - Use **MediaPipe FaceMesh** on the novice's webcam to track eye gaze and facial expression.
 - Use **Teachable Machine** to train a two-class model: record yourself looking frustrated/stuck vs. focused/working. Export it and drop it into the web app — it runs entirely in the browser.
