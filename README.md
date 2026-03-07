@@ -2,13 +2,9 @@
 # DONE
 
 ### Phase 1 — Get Two Screens Talking (WebRTC)
+### Phase 2 — Canvas Overlay
 
 # WIP
-### Phase 2 — Canvas Overlay
-- Place a transparent `<canvas>` element directly over the video stream on both sides.
-- Everything visual — ghost cursor, sonar rings, sticky notes, directional glow — gets drawn here.
-- When the expert moves their cursor over their canvas, send those `{x, y, type: "world_space" | "ui_element"}` coordinates through the data channel. The novice's canvas receives them and draws the ghost cursor in sync.
-At the end of this phase: expert moves mouse, novice sees a ghost cursor replayed on their screen.
 
 # WHAT'S LEFT
 ### Phase 3 — Stuck Detection
