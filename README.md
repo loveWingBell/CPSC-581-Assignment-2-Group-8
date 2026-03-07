@@ -5,7 +5,9 @@
 # WIP
 
 ### Phase 1 — Get Two Screens Talking (WebRTC)
----
+
+# WIP
+
 # WHAT'S LEFT
 
 ### Phase 2 — Canvas Overlay
@@ -35,7 +37,7 @@ At the end of this phase: the pulsing help icon appears automatically when the n
 ### Phase 7 — Novice Stamp
 - After playback ends, show three buttons: "Worked," "Still confused," + mic for re-recording.
 - Send the response back through the data channel or write it to Firestore.
----
+
 # BASIC ALGORITHM OVERVIEW
 **1. Smarter Stuck Detection**
 Instead of eye/mouse tracking alone, require multiple signals before triggering: idle cursor for X seconds + repeated undo actions + time-on-task exceeding a threshold. A small, unobtrusive pulsing icon appears in the corner of the viewport — no interruption, no modal. The novice chooses to engage it when ready.
