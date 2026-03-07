@@ -9,6 +9,7 @@
 - Everything visual — ghost cursor, sonar rings, sticky notes, directional glow — gets drawn here.
 - When the expert moves their cursor over their canvas, send those `{x, y, type: "world_space" | "ui_element"}` coordinates through the data channel. The novice's canvas receives them and draws the ghost cursor in sync.
 At the end of this phase: expert moves mouse, novice sees a ghost cursor replayed on their screen.
+**okay this doesn't feel good i need to find something else to use **
 
 # WHAT'S LEFT
 ### Phase 3 — Stuck Detection

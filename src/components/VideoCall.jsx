@@ -20,6 +20,10 @@ export default function VideoCall() {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
+  // local and remote canvas refs
+  const localCanvasRef = useRef(null);
+  const remoteCanvasRef = useRef(null);
+
   // pc and dataChannel live in refs so they persist across renders
   const pcRef = useRef(null);
   const dataChannelRef = useRef(null);
@@ -31,21 +35,21 @@ export default function VideoCall() {
 
   const addLog = (msg) => setLog((prev) => [...prev, msg]);
 
-  // Initialise a fresh RTCPeerConnection
+  // Init a fresh RTCPeerConnection
   function initPC() {
     const pc = new RTCPeerConnection(servers);
 
     // Data channel for cursor coords, notes, Marco-Polo triggers
     const dc = pc.createDataChannel('guidance');
     dc.onopen = () => addLog('Data channel open');
-    dc.onmessage = (e) => addLog(`Received: ${e.data}`);
+    dc.onmessage = (e) => handleIncomingMessage(e.data);
     dataChannelRef.current = dc;
 
     // Also handle the case where the remote peer creates the data channel
     pc.ondatachannel = (e) => {
       const remote = e.channel;
       remote.onopen = () => addLog('Remote data channel open');
-      remote.onmessage = (ev) => addLog(`Expert received: ${ev.data}`);
+      remote.onmessage = (ev) => handleIncomingMessage(ev.data);
       dataChannelRef.current = remote;
     };
 
@@ -145,6 +149,64 @@ export default function VideoCall() {
     addLog('Joined call. Waiting for novice screen...');
   }
 
+  const lastSentRef = useRef(0);
+
+  // When the expert moves their mouse over the remote video, send coordinates to the novice via the data channel
+  function handleExpertMouseMove(e) {
+    const now = Date.now();
+    if (now - lastSentRef.current < 16) return; // throttle to ~60fps
+    lastSentRef.current = now;
+
+    const canvas = remoteCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+
+    const dc = dataChannelRef.current;
+    if (dc && dc.readyState === 'open') {
+      dc.send(JSON.stringify({ type: 'cursor', x, y }));
+    }
+  }
+
+  // When the novice receives cursor coordinates from the expert, expert draws a ghost cursor on their canvas
+  function handleIncomingMessage(raw) {
+    const msg = JSON.parse(raw);
+    if (msg.type === 'cursor') {
+      drawGhostCursor(msg.x, msg.y);
+    }
+    addLog(`Received: ${raw}`);
+  }
+
+  // Helper function for above ^^^^^^
+  function drawGhostCursor(normX, normY) {
+    const canvas = localCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    // Clear previous frame
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Convert normalised coords back to pixels
+    const x = normX * canvas.width;
+    const y = normY * canvas.height;
+
+    // Draw the ghost cursor — a circle with a cross (we can get fancier later, if we got the time)
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(255, 100, 100, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(x - 8, y);
+    ctx.lineTo(x + 8, y);
+    ctx.moveTo(x, y - 8);
+    ctx.lineTo(x, y + 8);
+    ctx.strokeStyle = 'rgba(255, 100, 100, 0.9)';
+    ctx.stroke();
+  }
+
   // This is just used to test the data channel, will be deleted in future phases lol
   function sendTestMessage() {
     const dc = dataChannelRef.current;
@@ -164,22 +226,21 @@ export default function VideoCall() {
       <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>
         <div>
           <p style={{ margin: '0 0 6px' }}>Your Screen (Novice)</p>
-          <video
-            ref={localVideoRef}
-            autoPlay
-            muted
-            playsInline
-            style={{ width: 420, height: 300, background: '#111', display: 'block' }}
-          />
+          <div style={{ position: 'relative', width: 420, height: 300 }}>
+            <video ref={localVideoRef} autoPlay muted playsInline
+              style={{ width: 420, height: 300, background: '#111', display: 'block' }} />
+            <canvas ref={localCanvasRef} width={420} height={300}
+              style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
+          </div>
         </div>
         <div>
           <p style={{ margin: '0 0 6px' }}>Novice Screen (Expert view)</p>
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            style={{ width: 420, height: 300, background: '#111', display: 'block' }}
-          />
+          <div style={{ position: 'relative', width: 420, height: 300 }} onMouseMove ={handleExpertMouseMove}>
+            <video ref={remoteVideoRef} autoPlay playsInline
+              style={{ width: 420, height: 300, background: '#111', display: 'block' }} />
+            <canvas ref={remoteCanvasRef} width={420} height={300}
+              style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
+          </div>
         </div>
       </div>
 
