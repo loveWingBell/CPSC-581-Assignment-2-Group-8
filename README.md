@@ -6,6 +6,7 @@
 ### Phase 3 — Stuck Detection (kinda, only detects face and not undo or mouse)
 ### Phase 4 — Voice + Queue (still need to check queue + make it so the text can be edited)
 ### Phase 5 — Marco-Polo (only humming right now)
+### Phase 6 — Sticky Notes + Playback (doesn't have audio component, only speech )
 
 # WIP
 

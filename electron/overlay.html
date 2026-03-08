@@ -109,6 +109,7 @@
     let noviceX = 0.5, noviceY = 0.5; // normalised, default center
 
     const rings = []; // { x, y, radius, maxRadius, alpha }
+    const notes = []; // { x, y, text } — stored as % of canvas dimensions
 
     window.addEventListener('mousemove', (e) => {
       noviceX = e.clientX / window.innerWidth;
@@ -204,6 +205,50 @@
       document.body.appendChild(el);
     }
 
+    function drawNotes() {
+      for (const note of notes) {
+        const px = note.x * canvas.width;
+        const py = note.y * canvas.height;
+
+        // Pin dot
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#e67e22';
+        ctx.fill();
+
+        // Note box
+        const padding = 8;
+        const maxWidth = 180;
+        ctx.font = '12px sans-serif';
+        const lines = wrapText(ctx, note.text, maxWidth);
+        const boxH  = lines.length * 16 + padding * 2;
+
+        ctx.fillStyle = 'rgba(255, 235, 150, 0.95)';
+        ctx.beginPath();
+        ctx.roundRect(px + 10, py - 10, maxWidth + padding * 2, boxH, 6);
+        ctx.fill();
+
+        ctx.fillStyle = '#333';
+        lines.forEach((line, i) => ctx.fillText(line, px + 10 + padding, py - 10 + padding + 14 + i * 16));
+      }
+    }
+
+    // Wrap text to fit inside maxWidth
+    function wrapText(ctx, text, maxWidth) {
+      const words  = text.split(' ');
+      const lines  = [];
+      let current  = '';
+      for (const word of words) {
+        const test = current ? current + ' ' + word : word;
+        if (ctx.measureText(test).width > maxWidth && current) {
+          lines.push(current);
+          current = word;
+        } else { current = test; }
+      }
+      if (current) lines.push(current);
+      return lines;
+    }
+
     (function animate() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -215,6 +260,7 @@
       }
 
       // Draw sonar rings
+      drawNotes();
       for (let i = rings.length - 1; i >= 0; i--) {
         const r = rings[i];
         r.radius += 1.5;
@@ -226,13 +272,19 @@
         ctx.lineWidth = 2;
         ctx.stroke();
       }
-
+      
       requestAnimationFrame(animate);
     })();
 
     let lastRingTime = 0;
 
-    window.electron.onCursor(({ x, y, tag }) => {
+    window.electron.onCursor(({ x, y, tag, type, text }) => {
+      // Sticky note drop — handle before any cursor logic
+      if (type === 'sticky-note') {
+        notes.push({ x, y, text });
+        return;
+      }
+
       const px = x * canvas.width;   // pixel coords of expert target
       const py = y * canvas.height;
 

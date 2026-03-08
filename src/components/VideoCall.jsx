@@ -30,10 +30,40 @@ export default function VideoCall() {
 
   const { isStuck, camReady } = useStuckDetector(role === 'novice');
 
+  const cursorRecordingRef = useRef([]); // { x, y, tag, timestamp }
+  const recordingStartRef  = useRef(null);
+
+  const [noteMode, setNoteMode] = useState(false);
+
+  const sessionRecorderRef = useRef(null);
+  const sessionAudioRef    = useRef(null); // Blob URL of recorded audio
+
+  const [isPlayingBack, setIsPlayingBack] = useState(false);
+  const [hasRecording,  setHasRecording]  = useState(false);
+
   // When novice call connects in Electron, pass the selected window title to main process
   useEffect(() => {
     if (status === 'connected' && role === 'novice' && isElectron)
       window.electron.enterOverlayMode(selectedTitle);
+  }, [status, role]);
+
+  // 
+  useEffect(() => {
+    if (status === 'connected' && role === 'expert') {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        const recorder = new MediaRecorder(stream);
+        const chunks   = [];
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        recorder.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+          const blob = new Blob(chunks, { type: 'audio/webm' });
+          sessionAudioRef.current = URL.createObjectURL(blob);
+          setHasRecording(true);
+        };
+        recorder.start(250);
+        sessionRecorderRef.current = recorder;
+      });
+    }
   }, [status, role]);
 
   useEffect(() => {
@@ -257,6 +287,36 @@ export default function VideoCall() {
     addLog('Joined call. Waiting for novice screen...');
   }
 
+  // 
+  async function startPlayback() {
+    const events = cursorRecordingRef.current;
+    const audioUrl = sessionAudioRef.current;
+    if (!events.length) return;
+
+    setIsPlayingBack(true);
+
+    // Play audio from start
+    let audio = null;
+    if (audioUrl) {
+      audio = new Audio(audioUrl);
+      audio.play();
+    }
+
+    // Replay cursor events at original speed
+    const startTime = Date.now();
+    for (const event of events) {
+      const delay = event.timestamp - (Date.now() - startTime);
+      if (delay > 0) await new Promise(r => setTimeout(r, delay));
+
+      // Draw on the local canvas (novice side) or remote canvas (expert reviewing)
+      const canvas = role === 'expert' ? remoteCanvasRef.current : localCanvasRef.current;
+      if (canvas) drawCursor(canvas, event.x * canvas.width, event.y * canvas.height);
+    }
+
+    audio?.pause();
+    setIsPlayingBack(false);
+  }
+
   // Expert: mouse over remote video — send normalised coords (0–1)
   function handleExpertMouseMove(e) {
     const now = Date.now();
@@ -275,6 +335,13 @@ export default function VideoCall() {
     // Send normalised coords to novice
     const dc = dataChannelRef.current;
     if (dc?.readyState === 'open') dc.send(JSON.stringify({ type: 'cursor', x: normX, y: normY, tag: cursorTag }));
+    
+    // Record cursor event for playback
+    if (recordingStartRef.current === null) recordingStartRef.current = Date.now();
+    cursorRecordingRef.current.push({
+      x: normX, y: normY, tag: cursorTag,
+      timestamp: Date.now() - recordingStartRef.current,
+  }); 
   }
 
   // Novice: receive cursor from expert
@@ -290,6 +357,10 @@ export default function VideoCall() {
     } else if (msg.type === 'help-request') {
       addLog(`Novice needs help: "${msg.text}"`);
       setHelpRequest(msg.text);
+    } else if (msg.type === 'sticky-note') {
+      if (isElectron) {
+        window.electron.sendCursor({ type: 'sticky-note', x: msg.x, y: msg.y, text: msg.text });
+      }
     }
   }
 
@@ -300,9 +371,27 @@ export default function VideoCall() {
     if (localVideoRef.current)  localVideoRef.current.srcObject  = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (isElectron) window.electron.exitOverlayMode();
+    if (sessionRecorderRef.current?.state === 'recording') sessionRecorderRef.current.stop();
     setStatus('idle'); setRole('none'); setCallId(''); setSelectedTitle('');
     addLog('Call ended.');
   }
+
+  // Handle novice dropping a sticky note onto their screen in expert view — send note data to expert via data channel, and save to Firestore for expert to load if they refresh mid-call
+  function handleDropNote(e) {
+  const canvas = remoteCanvasRef.current;
+  if (!canvas) return;
+  const rect  = canvas.getBoundingClientRect();
+  const normX = (e.clientX - rect.left) / rect.width;
+  const normY = (e.clientY - rect.top)  / rect.height;
+
+  const text = prompt('Note text:'); // replace with a proper inline input in a future polish pass
+  if (!text?.trim()) return;
+
+  const note = { type: 'sticky-note', x: normX, y: normY, text: text.trim(), tag: cursorTag };
+  const dc = dataChannelRef.current;
+  if (dc?.readyState === 'open') dc.send(JSON.stringify(note));
+  setNoteMode(false);
+}
 
   // ── UI ────────────────────────────────────────────────────────────────────
   const videoBox   = { position: 'relative', width: 420, height: 300 };
@@ -322,22 +411,41 @@ export default function VideoCall() {
           </div>
         </div>
 
-        {role === 'expert' && status === 'connected' && (
-          <div style={{ marginBottom: 12 }}>
-            <strong style={{ marginRight: 8 }}>Cursor mode:</strong>
-            <button
-              onClick={() => setCursorTag(t => t === 'world_space' ? 'ui_element' : 'world_space')}
-              style={{ background: cursorTag === 'ui_element' ? '#646cff' : '#555', color: '#fff', padding: '4px 12px', border: 'none', borderRadius: 6 }}>
-              {cursorTag === 'world_space' ? '🌐 World Space' : '🖥 UI Element'}
-            </button>
-          </div>
-        )}
-
         <div>
           <p style={{ margin: '0 0 6px' }}>Novice Screen (Expert view)</p>
-          <div style={videoBox} onMouseMove={role === 'expert' ? handleExpertMouseMove : undefined}>
+          {role === 'expert' && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <strong style={{ marginRight: 4 }}>Cursor mode:</strong>
+              <button
+                disabled={status !== 'connected'}
+                onClick={() => setCursorTag(t => t === 'world_space' ? 'ui_element' : 'world_space')}
+                style={{ background: cursorTag === 'ui_element' ? '#646cff' : '#555', color: '#fff', padding: '4px 12px', border: 'none', borderRadius: 6, opacity: status !== 'connected' ? 0.4 : 1 }}>
+                {cursorTag === 'world_space' ? '🌐 World Space' : '🖥 UI Element'}
+              </button>
+              <button
+                disabled={status !== 'connected'}
+                onClick={() => setNoteMode(n => !n)}
+                style={{ background: noteMode ? '#e67e22' : '#555', color: '#fff', padding: '4px 12px', border: 'none', borderRadius: 6, opacity: status !== 'connected' ? 0.4 : 1 }}>
+                {noteMode ? '📌 Click to place' : '📌 Drop Note'}
+              </button>
+            </div>
+          )}
+          <div style={{ ...videoBox, cursor: noteMode ? 'crosshair' : 'default' }}
+            onMouseMove={role === 'expert' ? handleExpertMouseMove : undefined}
+            onClick={role === 'expert' && noteMode ? handleDropNote : undefined}>
             <video ref={remoteVideoRef} autoPlay playsInline style={videoStyle} />
             <canvas ref={remoteCanvasRef} width={420} height={300} style={canvasStyle} />
+            {noteMode && (
+              <div style={{
+                position: 'absolute', inset: 0, border: '2px dashed #e67e22',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                pointerEvents: 'none',
+              }}>
+                <span style={{ background: 'rgba(230,126,34,0.85)', color: '#fff', padding: '4px 10px', borderRadius: 6, fontSize: 13 }}>
+                  📌 Click anywhere to place note
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -368,6 +476,12 @@ export default function VideoCall() {
         <input placeholder="Enter Call ID" value={joinInput} onChange={(e) => setJoinInput(e.target.value)} style={{ padding: '6px 10px' }} />
         <button onClick={joinCall} disabled={!joinInput || status !== 'idle'}>3. Join Call (Expert)</button>
         <button onClick={endCall}  disabled={status === 'idle'} style={{ background: '#c0392b', color: '#fff' }}>End Call</button>
+        {hasRecording && role === 'expert' && (
+          <button onClick={startPlayback} disabled={isPlayingBack}
+            style={{ background: '#27ae60', color: '#fff', padding: '6px 14px', border: 'none', borderRadius: 6 }}>
+            {isPlayingBack ? '▶ Playing...' : '▶ Replay Session'}
+          </button>
+        )}
       </div>
 
       {callId && (
