@@ -4,6 +4,8 @@
 ### Phase 1 — Get Two Screens Talking (WebRTC)
 ### Phase 2 — Canvas Overlay
 ### Phase 3 — Stuck Detection (kinda, only detects face and not undo or mouse)
+### Phase 4 — Voice + Queue
+### Phase 5 — Marco-Polo
 
 # WIP
 
@@ -18,14 +20,16 @@ At the end of this phase: the pulsing help icon appears automatically when the n
 - Send the confirmed text through the WebRTC data channel to the expert.
 - For async (no expert online): store the request in **Firebase Firestore** so it can be picked up later.
 
-# WHAT'S LEFT
-
 ### Phase 5 — Marco-Polo
 - **Spatial audio**: Use Web Audio API's `PannerNode`. Set the target's `{x, y}` as a 3D position (treat the screen as a flat plane at z=0). As the novice moves their cursor, update the listener position. "Polo" audio will appear to come from the correct direction.
 - **Continuous hum**: A looping `OscillatorNode` whose frequency is mapped to the cursor's distance from the target. Closer = higher pitch.
 - **Haptics**: `navigator.vibrate([100])` pulsing on mobile as they approach.
 - **Sonar rings**: On the Canvas, draw expanding circles from the target coordinates, animated with `requestAnimationFrame`.
 - For **UI element targets**, skip the PannerNode and instead draw a directional gradient glow bleeding in from the correct screen edge toward the target panel.
+
+# WHAT'S LEFT
+
+
 ### Phase 6 — Sticky Notes + Playback
 - A sticky note is just a Canvas element anchored to `{x, y}` coordinates (screen space for UI elements, or a stored position for 3D space).
 - For 3D space anchoring, the simplest approach: when the expert drops the note, store the `{x, y}` as a percentage of the viewport dimensions so it scales if the window resizes.
