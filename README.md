@@ -15,12 +15,14 @@
 - For 3D space anchoring, the simplest approach: when the expert drops the note, store the `{x, y}` as a percentage of the viewport dimensions so it scales if the window resizes.
 - Playback is just re-running the recorded stream of `{x, y, timestamp}` cursor events through the canvas at the original speed, with the expert's voice audio playing simultaneously.
 
-
-# WHAT'S LEFT
-
 ### Phase 7 — Novice Stamp
 - After playback ends, show three buttons: "Worked," "Still confused," + mic for re-recording.
 - Send the response back through the data channel or write it to Firestore.
+
+
+# WHAT'S LEFT
+
+
 
 # BASIC ALGORITHM OVERVIEW
 **1. Smarter Stuck Detection**

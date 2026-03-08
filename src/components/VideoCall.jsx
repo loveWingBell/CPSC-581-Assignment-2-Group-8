@@ -41,6 +41,9 @@ export default function VideoCall() {
   const [isPlayingBack, setIsPlayingBack] = useState(false);
   const [hasRecording,  setHasRecording]  = useState(false);
 
+  const [stampResponse,   setStampResponse]   = useState(null); // 'worked' | 'confused' | null
+  const [showStampPanel,  setShowStampPanel]   = useState(false);
+
   // When novice call connects in Electron, pass the selected window title to main process
   useEffect(() => {
     if (status === 'connected' && role === 'novice' && isElectron)
@@ -315,6 +318,30 @@ export default function VideoCall() {
 
     audio?.pause();
     setIsPlayingBack(false);
+    // Prompt the novice to stamp the session
+    if (role === 'novice') setShowStampPanel(true);
+  }
+
+  async function sendStamp(verdict) {
+    setStampResponse(verdict);
+    setShowStampPanel(false);
+
+    // Send over data channel if still connected
+    const dc = dataChannelRef.current;
+    if (dc?.readyState === 'open') {
+      dc.send(JSON.stringify({ type: 'novice-stamp', verdict }));
+    }
+
+    // Also write to Firestore so it persists after the call ends
+    if (callId) {
+      try {
+        await addDoc(collection(db, 'stamps'), {
+          callId,
+          verdict,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err) { addLog('Failed to save stamp: ' + err.message); }
+    }
   }
 
   // Expert: mouse over remote video — send normalised coords (0–1)
@@ -361,6 +388,9 @@ export default function VideoCall() {
       if (isElectron) {
         window.electron.sendCursor({ type: 'sticky-note', x: msg.x, y: msg.y, text: msg.text });
       }
+    } else if (msg.type === 'novice-stamp') {
+      addLog(`Novice stamped session: "${msg.verdict}"`);
+      setHelpRequest(''); // clear the help panel — issue is resolved or re-opened
     }
   }
 
@@ -469,6 +499,39 @@ export default function VideoCall() {
           Stuck detector: {isStuck ? 'STUCK' : 'working'} | Cam ready
         </div>
       )}
+      {showStampPanel && role === 'novice' && (
+        <div style={{
+          padding: 16, background: '#1e2a3a', borderRadius: 10,
+          marginBottom: 16, borderLeft: '4px solid #646cff',
+          display: 'flex', flexDirection: 'column', gap: 12,
+        }}>
+          <strong style={{ color: '#fff' }}>Did that help?</strong>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => sendStamp('worked')}
+              style={{ background: '#27ae60', color: '#fff', padding: '8px 18px', border: 'none', borderRadius: 8, fontSize: 15 }}>
+              ✅ Worked
+            </button>
+            <button
+              onClick={() => sendStamp('confused')}
+              style={{ background: '#e74c3c', color: '#fff', padding: '8px 18px', border: 'none', borderRadius: 8, fontSize: 15 }}>
+              😕 Still confused
+            </button>
+            <button
+              onClick={() => {
+                setShowStampPanel(false);
+                // Re-open the help panel so they can re-record
+                window.electron?.sendHelpRequest && setShowStampPanel(false);
+                if (isElectron) window.electron.sendHelpRequest(''); // triggers overlay voice panel
+                // Non-Electron fallback: just re-show the help request flow
+                else setHelpRequest('__rerecord__');
+              }}
+              style={{ background: '#555', color: '#fff', padding: '8px 18px', border: 'none', borderRadius: 8, fontSize: 15 }}>
+              🎤 Re-record
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
         <button onClick={shareScreen} disabled={status !== 'idle'}>1. Share My Screen (Novice)</button>
@@ -490,7 +553,7 @@ export default function VideoCall() {
         </div>
       )}
 
-      {helpRequest && role === 'expert' && (
+      {helpRequest && helpRequest !== '__rerecord__' && role === 'expert' && (
         <div style={{ padding: 14, background: '#2c3e50', borderRadius: 8, marginBottom: 16, borderLeft: '4px solid #646cff' }}>
           <strong style={{ color: '#646cff' }}>Novice needs help:</strong>
           <p style={{ color: '#fff', margin: '6px 0 10px' }}>"{helpRequest}"</p>
