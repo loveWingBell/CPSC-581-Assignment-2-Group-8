@@ -18,6 +18,11 @@ function createMainWindow() {
     },
   });
 
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowed = ['media', 'camera', 'microphone', 'video'];
+    callback(allowed.includes(permission));
+  });
+
   isDev
     ? mainWindow.loadURL('http://localhost:5173')
     : mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -92,10 +97,15 @@ function createOverlayWindow(bounds) {
   overlayWindow.loadFile(path.join(__dirname, 'overlay.html'));
   overlayWindow.setIgnoreMouseEvents(true, { forward: true });
   overlayWindow.on('closed', () => { overlayWindow = null; });
+  overlayWindow.webContents.openDevTools({ mode: 'detach' }); // TEMPORARY, REMOVE LATER
 }
 
 app.whenReady().then(() => {
   createMainWindow();
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 // Desktop capture
@@ -110,6 +120,7 @@ ipcMain.on('enter-overlay-mode', (_, windowTitle) => {
   mainWindow.hide();
   createOverlayWindow(bounds);
   startWindowTracking();
+  startInputTracking();
 });
 
 // Forward ghost cursor coords to overlay
@@ -128,3 +139,52 @@ ipcMain.on('exit-overlay-mode', () => {
   if (overlayWindow) { overlayWindow.close(); overlayWindow = null; }
   mainWindow.show();
 });
+
+ipcMain.on('stuck-signal', (_, stuck) => {
+  console.log('main.js received stuck-signal:', stuck, '| overlayWindow exists:', !!overlayWindow);
+  if (overlayWindow) overlayWindow.webContents.send('stuck-signal', stuck);
+});
+
+const { globalShortcut } = require('electron');
+
+// OS-level idle + undo tracking, forwarded to the React app
+let lastMousePos    = { x: 0, y: 0 };
+let lastMoveTime    = Date.now();
+let undoTimes       = [];
+const UNDO_WINDOW_MS = 10000;
+
+function startInputTracking() {
+  // Poll mouse position every second
+  trackingInterval = setInterval(() => {
+    const pos = screen.getCursorScreenPoint();
+
+    // Check if mouse moved
+    if (pos.x !== lastMousePos.x || pos.y !== lastMousePos.y) {
+      lastMousePos = pos;
+      lastMoveTime = Date.now();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('os-mouse-moved');
+      }
+    }
+
+    // Send idle status
+    const idleMs = Date.now() - lastMoveTime;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('os-idle', idleMs);
+    }
+  }, 1000);
+
+  // Global Ctrl+Z listener
+  globalShortcut.register('CommandOrControl+Z', () => {
+    undoTimes = undoTimes.filter(t => Date.now() - t < UNDO_WINDOW_MS);
+    undoTimes.push(Date.now());
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('os-undo', undoTimes.length);
+    }
+  });
+}
+
+function stopInputTracking() {
+  globalShortcut.unregister('CommandOrControl+Z');
+  undoTimes = [];
+}

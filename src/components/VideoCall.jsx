@@ -4,6 +4,7 @@ import {
   collection, doc, setDoc, getDoc,
   onSnapshot, addDoc,
 } from 'firebase/firestore';
+import { useStuckDetector } from '../hooks/useStuckDetector.js';
 
 const servers = {
   iceServers: [
@@ -33,12 +34,21 @@ export default function VideoCall() {
 
   const addLog = (msg) => setLog((prev) => [...prev, msg]);
 
+  const { isStuck, camReady } = useStuckDetector(role === 'novice' && status === 'connected');
+
   // When novice call connects in Electron, pass the selected window title to main process
   useEffect(() => {
     if (status === 'connected' && role === 'novice' && isElectron) {
       window.electron.enterOverlayMode(selectedTitle);
     }
   }, [status, role]);
+
+  useEffect(() => {
+    console.log('isStuck changed:', isStuck);
+    if (isElectron && role === 'novice') {
+      window.electron.sendStuck(isStuck);
+    }
+  }, [isStuck]);
 
   // Draw ghost cursor on a canvas at pixel coords
   function drawCursor(canvas, x, y) {
@@ -293,7 +303,12 @@ export default function VideoCall() {
           </div>
         </div>
       )}
-
+      
+      {camReady && role === 'novice' && (
+      <div style={{ fontSize: 12, color: isStuck ? '#e74c3c' : '#2ecc71', marginBottom: 8 }}>
+        Stuck detector: {isStuck ? 'STUCK' : 'working'} | Cam ready
+      </div>
+    )}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
         <button onClick={shareScreen} disabled={status !== 'idle'}>
           1. Share My Screen (Novice)

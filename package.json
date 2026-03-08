@@ -13,6 +13,8 @@
     "dev:all": "concurrently \"npm run dev\" \"npm run electron\""
   },
   "dependencies": {
+    "@teachablemachine/image": "^0.8.5",
+    "@tensorflow/tfjs": "^4.22.0",
     "firebase": "^12.10.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

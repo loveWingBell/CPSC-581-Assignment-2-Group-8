@@ -35,16 +35,64 @@
     #end-call-btn.visible {
       opacity: 1;
     }
+    #help-indicator {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(100, 108, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    cursor: pointer;
+    pointer-events: all;
+    z-index: 9999;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    box-shadow: 0 0 0 0 rgba(100, 108, 255, 0.7);
+  }
+  #help-indicator.visible {
+    opacity: 1;
+    transform: scale(1);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0   rgba(100, 108, 255, 0.7); }
+    70%  { box-shadow: 0 0 0 16px rgba(100, 108, 255, 0);   }
+    100% { box-shadow: 0 0 0 0   rgba(100, 108, 255, 0);    }
+  }
   </style>
 </head>
 <body>
   <canvas id="overlay-canvas"></canvas>
   <button id="end-call-btn">End Call</button>
 
+  <div id="help-indicator" title="Having trouble?">❓</div>
+
   <script>
     const canvas = document.getElementById('overlay-canvas');
     const ctx = canvas.getContext('2d');
     const btn = document.getElementById('end-call-btn');
+    const helpBtn = document.getElementById('help-indicator');
+
+    window.electron.onStuck((stuck) => {
+      console.log('overlay received stuck:', stuck);
+      helpBtn.classList.toggle('visible', stuck);
+    });
+
+    // Make help button area clickable too
+    helpBtn.addEventListener('mouseenter', () => window.electron.setIgnoreMouse(false));
+    helpBtn.addEventListener('mouseleave', () => {
+      if (!inZone && !inBtn) window.electron.setIgnoreMouse(true);
+    });
+    helpBtn.addEventListener('click', () => {
+      // Phase 4 will handle what happens when this is clicked
+      console.log('Novice asked for help');
+    });
 
     // Canvas starts at window size, updates if window moves/resizes
     function resizeCanvas(w, h) {

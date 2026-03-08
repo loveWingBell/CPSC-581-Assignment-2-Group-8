@@ -3,19 +3,23 @@
 
 ### Phase 1 — Get Two Screens Talking (WebRTC)
 ### Phase 2 — Canvas Overlay
+### Phase 3 — Stuck Detection (kinda, only detects face and not undo or mouse)
 
 # WIP
 
-# WHAT'S LEFT
-### Phase 3 — Stuck Detection
+### Phase 3 — Stuck Detection (kinda, only detects face and not undo)
 - Use **MediaPipe FaceMesh** on the novice's webcam to track eye gaze and facial expression.
 - Use **Teachable Machine** to train a two-class model: record yourself looking frustrated/stuck vs. focused/working. Export it and drop it into the web app — it runs entirely in the browser.
 - Combine: Teachable Machine says "stuck" + cursor has been idle 15s + you can detect repeated Ctrl+Z via a keydown listener. All three = show the ambient pulsing indicator.
 At the end of this phase: the pulsing help icon appears automatically when the novice seems stuck.
+
 ### Phase 4 — Voice + Queue
 - Use the browser's built-in **Web Speech API** (`SpeechRecognition`) for the novice's voice input. Show the transcript so they can correct Blender terms before sending.
 - Send the confirmed text through the WebRTC data channel to the expert.
 - For async (no expert online): store the request in **Firebase Firestore** so it can be picked up later.
+
+# WHAT'S LEFT
+
 ### Phase 5 — Marco-Polo
 - **Spatial audio**: Use Web Audio API's `PannerNode`. Set the target's `{x, y}` as a 3D position (treat the screen as a flat plane at z=0). As the novice moves their cursor, update the listener position. "Polo" audio will appear to come from the correct direction.
 - **Continuous hum**: A looping `OscillatorNode` whose frequency is mapped to the cursor's distance from the target. Closer = higher pitch.
