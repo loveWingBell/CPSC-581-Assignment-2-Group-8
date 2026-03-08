@@ -122,6 +122,16 @@ ipcMain.on('arrival', () => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('arrival');
 });
 
+// Allow overlay to become keyboard-focusable when voice panel is open
+ipcMain.on('set-focusable', (_, val) => {
+  if (overlayWindow) overlayWindow.setFocusable(val);
+});
+
+// Focus the overlay window so the textarea can receive keyboard input
+ipcMain.on('focus-overlay', () => {
+  if (overlayWindow) overlayWindow.focus();
+});
+
 // Overlay asks main window to start recording (speech API needs localhost)
 ipcMain.on('start-recording', () => {
   if (mainWindow && !mainWindow.isDestroyed()) {

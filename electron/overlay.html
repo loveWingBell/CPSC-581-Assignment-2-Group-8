@@ -158,51 +158,10 @@
     window.electron.onBounds(({ width, height }) => resizeCanvas(width, height));
 
     // ── Ghost cursor ──────────────────────────────────────────────────────────
-    let targetX = null, targetY = null, currentX = null, currentY = null;
-    const SMOOTH = 0.6;
+    // targetX/targetY still tracked for arrival detection, but not drawn —
+    // the expert's cursor is not shown on the novice's screen
 
-    function drawCursor(x, y) {
-      ctx.strokeStyle = 'rgba(255, 80, 80, 0.95)';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(x, y, 14, 0, 2 * Math.PI); ctx.stroke();
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y);
-      ctx.moveTo(x, y - 9); ctx.lineTo(x, y + 9);
-      ctx.stroke();
-    }
-
-    function drawEdgeGlow(normX, normY) {
-      // Remove old glow element if present
-      document.getElementById('edge-glow')?.remove();
-
-      // Figure out which edge the target is closest to
-      const distLeft   = normX;
-      const distRight  = 1 - normX;
-      const distTop    = normY;
-      const distBottom = 1 - normY;
-      const minDist    = Math.min(distLeft, distRight, distTop, distBottom);
-
-      const el = document.createElement('div');
-      el.id = 'edge-glow';
-      Object.assign(el.style, { position: 'fixed', pointerEvents: 'none', zIndex: '9990', opacity: '0.6', transition: 'opacity 0.3s' });
-
-      if (minDist === distLeft) {
-        Object.assign(el.style, { top: 0, left: 0, width: '120px', height: '100vh',
-          background: 'linear-gradient(to right, rgba(100,108,255,0.7), transparent)' });
-      } else if (minDist === distRight) {
-        Object.assign(el.style, { top: 0, right: 0, width: '120px', height: '100vh',
-          background: 'linear-gradient(to left, rgba(100,108,255,0.7), transparent)' });
-      } else if (minDist === distTop) {
-        Object.assign(el.style, { top: 0, left: 0, width: '100vw', height: '120px',
-          background: 'linear-gradient(to bottom, rgba(100,108,255,0.7), transparent)' });
-      } else {
-        Object.assign(el.style, { bottom: 0, left: 0, width: '100vw', height: '120px',
-          background: 'linear-gradient(to top, rgba(100,108,255,0.7), transparent)' });
-      }
-
-      document.body.appendChild(el);
-    }
+    let targetX = null, targetY = null;
 
     function drawNotes() {
       for (const note of notes) {
@@ -234,9 +193,9 @@
 
     // Wrap text to fit inside maxWidth
     function wrapText(ctx, text, maxWidth) {
-      const words  = text.split(' ');
-      const lines  = [];
-      let current  = '';
+      const words   = text.split(' ');
+      const lines   = [];
+      let current   = '';
       for (const word of words) {
         const test = current ? current + ' ' + word : word;
         if (ctx.measureText(test).width > maxWidth && current) {
@@ -248,34 +207,73 @@
       return lines;
     }
 
-    (function animate() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // ── Lazy animation loop — only runs when rings or notes are present ────────
+    // Running rAF unconditionally at 60fps keeps the overlay renderer busy enough
+    // to delay forwarded mouse events reaching Blender, causing perceived lag.
+    let rafId = null;
 
-      // Draw ghost cursor
-      if (targetX !== null) {
-        currentX = currentX === null ? targetX : currentX + SMOOTH * (targetX - currentX);
-        currentY = currentY === null ? targetY : currentY + SMOOTH * (targetY - currentY);
-        drawCursor(currentX, currentY);
-      }
+    function scheduleAnimate() {
+      if (!rafId) rafId = requestAnimationFrame(animateFrame);
+    }
+
+    function animateFrame() {
+      rafId = null;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Draw sticky notes
       drawNotes();
 
       // Draw sonar rings
+      let hasActiveRings = false;
       for (let i = rings.length - 1; i >= 0; i--) {
         const r = rings[i];
         r.radius += 1.5;
         r.alpha  -= 0.012;
         if (r.alpha <= 0) { rings.splice(i, 1); continue; }
+        hasActiveRings = true;
         ctx.beginPath();
         ctx.arc(r.x, r.y, r.radius, 0, 2 * Math.PI);
         ctx.strokeStyle = `rgba(100, 108, 255, ${r.alpha})`;
         ctx.lineWidth = 2;
         ctx.stroke();
       }
-      
-      requestAnimationFrame(animate);
-    })();
+
+      // Keep animating as long as rings are still expanding, or notes need to stay visible
+      if (hasActiveRings || notes.length > 0) scheduleAnimate();
+    }
+      // Remove old glow element if present
+      document.getElementById('edge-glow')?.remove();
+
+      // Figure out which edge the target is closest to
+      const distLeft   = normX;
+      const distRight  = 1 - normX;
+      const distTop    = normY;
+      const distBottom = 1 - normY;
+      const minDist    = Math.min(distLeft, distRight, distTop, distBottom);
+
+      const el = document.createElement('div');
+      el.id = 'edge-glow';
+      Object.assign(el.style, { position: 'fixed', pointerEvents: 'none', zIndex: '9990', opacity: '0.6', transition: 'opacity 0.3s' });
+
+      if (minDist === distLeft) {
+        Object.assign(el.style, { top: 0, left: 0, width: '120px', height: '100vh',
+          background: 'linear-gradient(to right, rgba(100,108,255,0.7), transparent)' });
+      } else if (minDist === distRight) {
+        Object.assign(el.style, { top: 0, right: 0, width: '120px', height: '100vh',
+          background: 'linear-gradient(to left, rgba(100,108,255,0.7), transparent)' });
+      } else if (minDist === distTop) {
+        Object.assign(el.style, { top: 0, left: 0, width: '100vw', height: '120px',
+          background: 'linear-gradient(to bottom, rgba(100,108,255,0.7), transparent)' });
+      } else {
+        Object.assign(el.style, { bottom: 0, left: 0, width: '100vw', height: '120px',
+          background: 'linear-gradient(to top, rgba(100,108,255,0.7), transparent)' });
+      }
+
+    document.body.appendChild(el);
+
+    function drawNotes() {
+      // placeholder — duplicate removed; actual drawNotes is defined above
+    }
 
     let lastRingTime = 0;
     let arrivedAtTarget = false; // reset each time target changes, fires stamp panel once per target
@@ -284,6 +282,7 @@
       // Sticky note drop — handle before any cursor logic
       if (type === 'sticky-note') {
         notes.push({ x, y, text });
+        scheduleAnimate();
         return;
       }
 
@@ -294,41 +293,14 @@
       targetY = py;
       arrivedAtTarget = false; // new target position — re-arm the arrival signal
 
-      initAudio(); // safe to call every time — no-ops after first call
-
       // Distance from novice cursor to expert target (normalised 0–1)
       const dist = Math.hypot(x - noviceX, y - noviceY);
-
-      if (tag === 'world_space') {
-        // ── Spatial audio: position panner at target relative to listener ────
-        // Map normalised coords to a -5..5 world space
-        const worldX = (x - 0.5) * 10;
-        const worldY = (y - 0.5) * 10; // y axis (up/down on screen)
-        panner.positionX.setValueAtTime(worldX,  audioCtx.currentTime);
-        panner.positionY.setValueAtTime(-worldY, audioCtx.currentTime); // invert: screen-down = audio-down
-        panner.positionZ.setValueAtTime(-1,      audioCtx.currentTime);
-        audioCtx.listener.positionX.setValueAtTime(0, audioCtx.currentTime);
-        audioCtx.listener.positionY.setValueAtTime(0, audioCtx.currentTime);
-        audioCtx.listener.positionZ.setValueAtTime(0, audioCtx.currentTime);
-
-        // ── Hum pitch: closer = higher pitch (220Hz far → 880Hz close) ───────
-        const freq = 220 + (1 - Math.min(dist, 1)) * 660;
-        oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
-        gainNode.gain.setTargetAtTime(0.15, audioCtx.currentTime, 0.1);
-
-        // Remove any edge glow from a previous ui_element cursor
-        document.getElementById('edge-glow')?.remove();
-
-      } else {
-        // ── UI Element: edge glow from nearest screen edge ───────────────────
-        gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); // silence hum
-        drawEdgeGlow(x, y);
-      }
 
       // ── Sonar rings every 800ms ───────────────────────────────────────────
       const now = Date.now();
       if (now - lastRingTime > 800) {
         spawnRings(px, py);
+        scheduleAnimate();
         lastRingTime = now;
       }
 
@@ -372,6 +344,9 @@
       voicePanel.classList.add('visible');
       inPanel = true;
       updatePassthrough();
+      // Make overlay keyboard-focusable so the textarea can receive keystrokes
+      window.electron.setFocusable(true);
+      window.electron.focusOverlay();
       input.focus();
     });
 
@@ -413,6 +388,9 @@
           input.value = msg.text;
           sendBtn.classList.add('visible');
         }
+        // Re-focus the input so the novice can edit the transcript before sending
+        window.electron.setFocusable(true);
+        window.electron.focusOverlay();
         input.focus();
 
       } else if (msg.type === 'error') {
@@ -434,6 +412,8 @@
       helpBtn.classList.remove('visible');
       inPanel = false;
       updatePassthrough();
+      // Return keyboard focus to Blender
+      window.electron.setFocusable(false);
       input.value = '';
       sendBtn.classList.remove('visible');
       isRecording = false;
@@ -446,6 +426,8 @@
       voicePanel.classList.remove('visible');
       inPanel = false;
       updatePassthrough();
+      // Return keyboard focus to Blender
+      window.electron.setFocusable(false);
       input.value = '';
       sendBtn.classList.remove('visible');
       micBtn.classList.remove('recording');

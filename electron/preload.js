@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('electron', {
   sendStuck:        (stuck) => ipcRenderer.send('stuck-signal', stuck),
   sendHelpRequest:  (text) => ipcRenderer.send('help-request', text),
   sendArrival:      () => ipcRenderer.send('arrival'),
+  setFocusable:     (val) => ipcRenderer.send('set-focusable', val),
+  focusOverlay:     () => ipcRenderer.send('focus-overlay'),
   startRecording:   () => ipcRenderer.send('start-recording'),
   sendTranscript:   (text) => ipcRenderer.send('transcript', text),
   onCursor:         (cb) => on('ghost-cursor',    (_, data) => cb(data)),
