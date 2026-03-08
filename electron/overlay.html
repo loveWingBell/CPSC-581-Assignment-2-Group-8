@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100vw; height: 100vh;
+      background: transparent;
+      overflow: hidden;
+    }
+    canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      pointer-events: none;
+    }
+    #end-call-btn {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      padding: 10px 22px;
+      background: #c0392b;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      pointer-events: all;
+      z-index: 9999;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    #end-call-btn.visible {
+      opacity: 1;
+    }
+    #help-indicator {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(100, 108, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    cursor: pointer;
+    pointer-events: all;
+    z-index: 9999;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    box-shadow: 0 0 0 0 rgba(100, 108, 255, 0.7);
+  }
+  #help-indicator.visible {
+    opacity: 1;
+    transform: scale(1);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0   rgba(100, 108, 255, 0.7); }
+    70%  { box-shadow: 0 0 0 16px rgba(100, 108, 255, 0);   }
+    100% { box-shadow: 0 0 0 0   rgba(100, 108, 255, 0);    }
+  }
+  </style>
+</head>
+<body>
+  <canvas id="overlay-canvas"></canvas>
+  <button id="end-call-btn">End Call</button>
+
+  <div id="help-indicator" title="Having trouble?">❓</div>
+
+  <script>
+    const canvas = document.getElementById('overlay-canvas');
+    const ctx = canvas.getContext('2d');
+    const btn = document.getElementById('end-call-btn');
+    const helpBtn = document.getElementById('help-indicator');
+
+    window.electron.onStuck((stuck) => {
+      console.log('overlay received stuck:', stuck);
+      helpBtn.classList.toggle('visible', stuck);
+    });
+
+    // Make help button area clickable too
+    helpBtn.addEventListener('mouseenter', () => window.electron.setIgnoreMouse(false));
+    helpBtn.addEventListener('mouseleave', () => {
+      if (!inZone && !inBtn) window.electron.setIgnoreMouse(true);
+    });
+    helpBtn.addEventListener('click', () => {
+      // Phase 4 will handle what happens when this is clicked
+      console.log('Novice asked for help');
+    });
+
+    // Canvas starts at window size, updates if window moves/resizes
+    function resizeCanvas(w, h) {
+      canvas.width  = w || window.innerWidth;
+      canvas.height = h || window.innerHeight;
+    }
+    resizeCanvas();
+
+    // Receive updated window bounds when tracked window moves
+    window.electron.onBounds(({ width, height }) => resizeCanvas(width, height));
+
+    // Draw ghost cursor at normalised coords
+    function drawCursor(normX, normY) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const x = normX * canvas.width;
+      const y = normY * canvas.height;
+
+      ctx.beginPath();
+      ctx.arc(x, y, 14, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(255, 80, 80, 0.95)';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y);
+      ctx.moveTo(x, y - 9); ctx.lineTo(x, y + 9);
+      ctx.strokeStyle = 'rgba(255, 80, 80, 0.95)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    window.electron.onCursor(({ x, y }) => drawCursor(x, y));
+
+    // Hover zone: bottom-right 180x90px area
+    // Use JS tracking so button stays visible when mouse moves onto it
+    let inZone = false;
+    let inBtn  = false;
+
+    function updateVisibility() {
+      if (inZone || inBtn) {
+        btn.classList.add('visible');
+        window.electron.setIgnoreMouse(false);
+      } else {
+        btn.classList.remove('visible');
+        window.electron.setIgnoreMouse(true);
+      }
+    }
+
+    // Detect mouse near bottom-right corner via mousemove on the document
+    // (only fires when setIgnoreMouseEvents is false, so we poll instead)
+    function checkCorner(e) {
+      const margin = 180;
+      const marginY = 90;
+      const nearCorner =
+        e.clientX > window.innerWidth  - margin &&
+        e.clientY > window.innerHeight - marginY;
+      if (nearCorner !== inZone) {
+        inZone = nearCorner;
+        updateVisibility();
+      }
+    }
+
+    // Poll mouse position via a transparent tracking div
+    const tracker = document.createElement('div');
+    Object.assign(tracker.style, {
+      position: 'fixed', bottom: '0', right: '0',
+      width: '180px', height: '90px',
+      pointerEvents: 'all', zIndex: '9998',
+    });
+    tracker.addEventListener('mouseenter', () => { inZone = true;  updateVisibility(); });
+    tracker.addEventListener('mouseleave', () => { inZone = false; updateVisibility(); });
+    document.body.appendChild(tracker);
+
+    btn.addEventListener('mouseenter', () => { inBtn = true;  updateVisibility(); });
+    btn.addEventListener('mouseleave', () => { inBtn = false; updateVisibility(); });
+
+    btn.addEventListener('click', () => {
+      window.electron.exitOverlayMode();
+    });
+  </script>
+</body>
+</html>
