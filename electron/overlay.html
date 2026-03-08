@@ -162,7 +162,6 @@
     const SMOOTH = 0.6;
 
     function drawCursor(x, y) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.strokeStyle = 'rgba(255, 80, 80, 0.95)';
       ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(x, y, 14, 0, 2 * Math.PI); ctx.stroke();
@@ -259,8 +258,10 @@
         drawCursor(currentX, currentY);
       }
 
-      // Draw sonar rings
+      // Draw sticky notes
       drawNotes();
+
+      // Draw sonar rings
       for (let i = rings.length - 1; i >= 0; i--) {
         const r = rings[i];
         r.radius += 1.5;
@@ -277,6 +278,7 @@
     })();
 
     let lastRingTime = 0;
+    let arrivedAtTarget = false; // reset each time target changes, fires stamp panel once per target
 
     window.electron.onCursor(({ x, y, tag, type, text }) => {
       // Sticky note drop — handle before any cursor logic
@@ -290,6 +292,7 @@
 
       targetX = px;
       targetY = py;
+      arrivedAtTarget = false; // new target position — re-arm the arrival signal
 
       initAudio(); // safe to call every time — no-ops after first call
 
@@ -331,6 +334,12 @@
 
       // ── Haptics: pulse as novice gets within 0.15 of target ──────────────
       if (dist < 0.15 && navigator.vibrate) navigator.vibrate(50);
+
+      // ── Arrival: fire once when novice first reaches target ───────────────
+      if (dist < 0.15 && !arrivedAtTarget) {
+        arrivedAtTarget = true;
+        window.electron.sendArrival();
+      }
     });
 
     // ── Stuck signal → show help indicator ────────────────────────────────────

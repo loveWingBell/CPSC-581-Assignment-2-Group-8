@@ -117,6 +117,11 @@ ipcMain.on('help-request', (_, text) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('help-request', text);
 });
 
+// Novice cursor arrived at target — forward to main window to show stamp panel
+ipcMain.on('arrival', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('arrival');
+});
+
 // Overlay asks main window to start recording (speech API needs localhost)
 ipcMain.on('start-recording', () => {
   if (mainWindow && !mainWindow.isDestroyed()) {

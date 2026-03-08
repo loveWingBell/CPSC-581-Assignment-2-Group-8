@@ -25,24 +25,20 @@ export default function VideoCall() {
   const [selectedTitle, setSelectedTitle] = useState(''); // window title for OS tracking
   const [helpRequest,   setHelpRequest]   = useState(''); // novice's help message shown to expert
   const [cursorTag,     setCursorTag]     = useState('world_space'); // 'world_space' | 'ui_element'
+  const [noteMode,      setNoteMode]      = useState(false);
+  const [isPlayingBack, setIsPlayingBack] = useState(false);
+  const [hasRecording,  setHasRecording]  = useState(false);
+  const [stampResponse,  setStampResponse]  = useState(null); // 'worked' | 'confused' | null
+  const [showStampPanel, setShowStampPanel] = useState(false);
+
+  const cursorRecordingRef = useRef([]); // { x, y, tag, timestamp }
+  const recordingStartRef  = useRef(null);
+  const sessionRecorderRef = useRef(null);
+  const sessionAudioRef    = useRef(null); // Blob URL of recorded audio
 
   const addLog = (msg) => setLog((prev) => [...prev, msg]);
 
   const { isStuck, camReady } = useStuckDetector(role === 'novice');
-
-  const cursorRecordingRef = useRef([]); // { x, y, tag, timestamp }
-  const recordingStartRef  = useRef(null);
-
-  const [noteMode, setNoteMode] = useState(false);
-
-  const sessionRecorderRef = useRef(null);
-  const sessionAudioRef    = useRef(null); // Blob URL of recorded audio
-
-  const [isPlayingBack, setIsPlayingBack] = useState(false);
-  const [hasRecording,  setHasRecording]  = useState(false);
-
-  const [stampResponse,   setStampResponse]   = useState(null); // 'worked' | 'confused' | null
-  const [showStampPanel,  setShowStampPanel]   = useState(false);
 
   // When novice call connects in Electron, pass the selected window title to main process
   useEffect(() => {
@@ -50,7 +46,7 @@ export default function VideoCall() {
       window.electron.enterOverlayMode(selectedTitle);
   }, [status, role]);
 
-  // 
+  // Record expert audio for the full call duration so it can be replayed alongside cursor events
   useEffect(() => {
     if (status === 'connected' && role === 'expert') {
       navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
@@ -93,6 +89,14 @@ export default function VideoCall() {
       } catch (err) { addLog('Failed to save to queue: ' + err.message); }
     });
   }, []); // [] so listener is only registered once, not once per callId change
+
+  // Novice arrives at target — overlay sends signal when dist < 0.15, show stamp panel
+  useEffect(() => {
+    if (!isElectron) return;
+    window.electron.onArrival(() => {
+      if (role === 'novice') setShowStampPanel(true);
+    });
+  }, [role]);
 
   // Handle recording requests from the overlay.
   // Web Speech API silently fails in Electron (no Google API key in non-Chrome builds).
@@ -236,10 +240,10 @@ export default function VideoCall() {
 
   // Novice: create call
   async function createCall() {
-    const pc           = pcRef.current;
-    const callDoc      = doc(collection(db, 'calls'));
-    const offerCands   = collection(callDoc, 'offerCandidates');
-    const answerCands  = collection(callDoc, 'answerCandidates');
+    const pc          = pcRef.current;
+    const callDoc     = doc(collection(db, 'calls'));
+    const offerCands  = collection(callDoc, 'offerCandidates');
+    const answerCands = collection(callDoc, 'answerCandidates');
     setCallId(callDoc.id);
 
     pc.onicecandidate = (e) => { if (e.candidate) addDoc(offerCands, e.candidate.toJSON()); };
@@ -290,9 +294,9 @@ export default function VideoCall() {
     addLog('Joined call. Waiting for novice screen...');
   }
 
-  // 
+  // Expert: replay their recorded cursor movements and audio from this session
   async function startPlayback() {
-    const events = cursorRecordingRef.current;
+    const events   = cursorRecordingRef.current;
     const audioUrl = sessionAudioRef.current;
     if (!events.length) return;
 
@@ -318,8 +322,6 @@ export default function VideoCall() {
 
     audio?.pause();
     setIsPlayingBack(false);
-    // Prompt the novice to stamp the session
-    if (role === 'novice') setShowStampPanel(true);
   }
 
   async function sendStamp(verdict) {
@@ -328,18 +330,12 @@ export default function VideoCall() {
 
     // Send over data channel if still connected
     const dc = dataChannelRef.current;
-    if (dc?.readyState === 'open') {
-      dc.send(JSON.stringify({ type: 'novice-stamp', verdict }));
-    }
+    if (dc?.readyState === 'open') dc.send(JSON.stringify({ type: 'novice-stamp', verdict }));
 
     // Also write to Firestore so it persists after the call ends
     if (callId) {
       try {
-        await addDoc(collection(db, 'stamps'), {
-          callId,
-          verdict,
-          timestamp: new Date().toISOString(),
-        });
+        await addDoc(collection(db, 'stamps'), { callId, verdict, timestamp: new Date().toISOString() });
       } catch (err) { addLog('Failed to save stamp: ' + err.message); }
     }
   }
@@ -362,13 +358,30 @@ export default function VideoCall() {
     // Send normalised coords to novice
     const dc = dataChannelRef.current;
     if (dc?.readyState === 'open') dc.send(JSON.stringify({ type: 'cursor', x: normX, y: normY, tag: cursorTag }));
-    
+
     // Record cursor event for playback
     if (recordingStartRef.current === null) recordingStartRef.current = Date.now();
     cursorRecordingRef.current.push({
       x: normX, y: normY, tag: cursorTag,
       timestamp: Date.now() - recordingStartRef.current,
-  }); 
+    });
+  }
+
+  // Handle novice dropping a sticky note onto their screen in expert view — send note data to novice via data channel
+  function handleDropNote(e) {
+    const canvas = remoteCanvasRef.current;
+    if (!canvas) return;
+    const rect  = canvas.getBoundingClientRect();
+    const normX = (e.clientX - rect.left) / rect.width;
+    const normY = (e.clientY - rect.top)  / rect.height;
+
+    const text = prompt('Note text:'); // replace with a proper inline input in a future polish pass
+    if (!text?.trim()) return;
+
+    const note = { type: 'sticky-note', x: normX, y: normY, text: text.trim(), tag: cursorTag };
+    const dc = dataChannelRef.current;
+    if (dc?.readyState === 'open') dc.send(JSON.stringify(note));
+    setNoteMode(false);
   }
 
   // Novice: receive cursor from expert
@@ -406,26 +419,9 @@ export default function VideoCall() {
     addLog('Call ended.');
   }
 
-  // Handle novice dropping a sticky note onto their screen in expert view — send note data to expert via data channel, and save to Firestore for expert to load if they refresh mid-call
-  function handleDropNote(e) {
-  const canvas = remoteCanvasRef.current;
-  if (!canvas) return;
-  const rect  = canvas.getBoundingClientRect();
-  const normX = (e.clientX - rect.left) / rect.width;
-  const normY = (e.clientY - rect.top)  / rect.height;
-
-  const text = prompt('Note text:'); // replace with a proper inline input in a future polish pass
-  if (!text?.trim()) return;
-
-  const note = { type: 'sticky-note', x: normX, y: normY, text: text.trim(), tag: cursorTag };
-  const dc = dataChannelRef.current;
-  if (dc?.readyState === 'open') dc.send(JSON.stringify(note));
-  setNoteMode(false);
-}
-
   // ── UI ────────────────────────────────────────────────────────────────────
-  const videoBox   = { position: 'relative', width: 420, height: 300 };
-  const videoStyle = { width: 420, height: 300, background: '#111', display: 'block' };
+  const videoBox    = { position: 'relative', width: 420, height: 300 };
+  const videoStyle  = { width: 420, height: 300, background: '#111', display: 'block' };
   const canvasStyle = { position: 'absolute', top: 0, left: 0, pointerEvents: 'none' };
 
   return (
@@ -499,6 +495,7 @@ export default function VideoCall() {
           Stuck detector: {isStuck ? 'STUCK' : 'working'} | Cam ready
         </div>
       )}
+
       {showStampPanel && role === 'novice' && (
         <div style={{
           padding: 16, background: '#1e2a3a', borderRadius: 10,
@@ -520,11 +517,8 @@ export default function VideoCall() {
             <button
               onClick={() => {
                 setShowStampPanel(false);
-                // Re-open the help panel so they can re-record
-                window.electron?.sendHelpRequest && setShowStampPanel(false);
-                if (isElectron) window.electron.sendHelpRequest(''); // triggers overlay voice panel
-                // Non-Electron fallback: just re-show the help request flow
-                else setHelpRequest('__rerecord__');
+                // Re-trigger the help indicator on the overlay so the novice can re-record
+                if (isElectron) window.electron.sendStuck(true);
               }}
               style={{ background: '#555', color: '#fff', padding: '8px 18px', border: 'none', borderRadius: 8, fontSize: 15 }}>
               🎤 Re-record
@@ -553,7 +547,7 @@ export default function VideoCall() {
         </div>
       )}
 
-      {helpRequest && helpRequest !== '__rerecord__' && role === 'expert' && (
+      {helpRequest && role === 'expert' && (
         <div style={{ padding: 14, background: '#2c3e50', borderRadius: 8, marginBottom: 16, borderLeft: '4px solid #646cff' }}>
           <strong style={{ color: '#646cff' }}>Novice needs help:</strong>
           <p style={{ color: '#fff', margin: '6px 0 10px' }}>"{helpRequest}"</p>
