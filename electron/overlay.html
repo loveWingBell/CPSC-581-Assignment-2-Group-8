@@ -79,6 +79,7 @@
 </head>
 <body>
   <canvas id="overlay-canvas"></canvas>
+  <audio id="chime" src="chime.mp3"></audio>
   <button id="end-call-btn">End Call</button>
   <div id="help-indicator" title="Having trouble?">❓</div>
 
@@ -91,64 +92,41 @@
   </div>
 
   <script>
-    const canvas     = document.getElementById('overlay-canvas');
-    const ctx        = canvas.getContext('2d');
-    const endBtn     = document.getElementById('end-call-btn');
-    const helpBtn    = document.getElementById('help-indicator');
-    const voicePanel = document.getElementById('voice-panel');
-    const micBtn     = document.getElementById('mic-btn');
-    const input      = document.getElementById('transcript-input');
-    const sendBtn    = document.getElementById('send-btn');
-    const cancelBtn  = document.getElementById('cancel-voice-btn');
+    let target = null;
+    let arrived = false;
+    const canvas = document.getElementById('overlay-canvas');
+    const ctx = canvas.getContext('2d');
+    const btn = document.getElementById('end-call-btn');
 
-    let audioCtx   = null;
-    let panner     = null;
-    let oscillator = null;
-    let gainNode   = null;
+    const chime = document.getElementById('chime');
+    let ripples = [];
 
-    let noviceX = 0.5, noviceY = 0.5; // normalised, default center
+    let stickyNote = null;
+    let playback = {
+      events: [],
+      startTime: null,
+      playing: false
+    };
 
-    const rings = []; // { x, y, radius, maxRadius, alpha }
+    target = { x: 0.6, y: 0.4 };  // center-right-ish
+stickyNote = {
+  x: 0.65,
+  y: 0.35,
+  text: "Click this!"
+};
 
-    window.addEventListener('mousemove', (e) => {
-      noviceX = e.clientX / window.innerWidth;
-      noviceY = e.clientY / window.innerHeight;
-    });
+// fake recorded cursor path to test playback
+startPlayBack([
+  { x: 0.1, y: 0.7, t: 0 },
+  { x: 0.25, y: 0.6, t: 200 },
+  { x: 0.4, y: 0.5, t: 400 },
+  { x: 0.55, y: 0.45, t: 600 },
+  { x: 0.65, y: 0.35, t: 800 }
+]);
 
-    // ── Spatial audio ─────────────────────────────────────────────────────────
+  
 
-    function initAudio() {
-      if (audioCtx) return;
-      audioCtx  = new AudioContext();
-      gainNode  = audioCtx.createGain();
-      gainNode.gain.value = 0.15; // quiet hum
-      gainNode.connect(audioCtx.destination);
-
-      // PannerNode — positions the audio in 3D space
-      panner = audioCtx.createPanner();
-      panner.panningModel  = 'HRTF';
-      panner.distanceModel = 'inverse';
-      panner.refDistance   = 1;
-      panner.maxDistance   = 10;
-      panner.rolloffFactor = 1;
-      panner.connect(gainNode);
-
-      // Continuous hum — pitch maps to distance from novice cursor
-      oscillator = audioCtx.createOscillator();
-      oscillator.type            = 'sine';
-      oscillator.frequency.value = 220;
-      oscillator.connect(panner);
-      oscillator.start();
-    }
-
-    function spawnRings(x, y) {
-      // Spawn 3 rings staggered in time
-      for (let i = 0; i < 3; i++) {
-        setTimeout(() => rings.push({ x, y, radius: 0, maxRadius: 80, alpha: 0.8 }), i * 200);
-      }
-    }
-
-    // ── Canvas resize ─────────────────────────────────────────────────────────
+    // Canvas starts at window size, updates if window moves/resizes
     function resizeCanvas(w, h) {
       canvas.width  = w || window.innerWidth;
       canvas.height = h || window.innerHeight;
@@ -156,25 +134,132 @@
     resizeCanvas();
     window.electron.onBounds(({ width, height }) => resizeCanvas(width, height));
 
-    // ── Ghost cursor ──────────────────────────────────────────────────────────
-    let targetX = null, targetY = null, currentX = null, currentY = null;
-    const SMOOTH = 0.6;
+    // Draw ghost cursor at normalised coords
+    let cursor = { x: 0, y: 0 }; 
+    function drawCursor() {
+      const x = cursor.x * canvas.width;
+      const y = cursor.y * canvas.height;
 
-    function drawCursor(x, y) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = 'rgba(255, 80, 80, 0.95)';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(x, y, 14, 0, 2 * Math.PI); ctx.stroke();
-      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y);
-      ctx.moveTo(x, y - 9); ctx.lineTo(x, y + 9);
+      ctx.arc(x, y, 14, 0, 2 * Math.PI);
+      ctx.strokeStyle = `rgba(255, 80, 80, 0.95)`;
+      ctx.lineWidth = 2.5; 
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x-9, y);
+      ctx.lineTo(x+9, y);
+      ctx.moveTo(x, y-9);
+      ctx.lineTo(x, y+9);
+      ctx.strokeStyle = `rgba(255, 80, 80, 0.95)`;
+      ctx.lineWidth = 2;
       ctx.stroke();
     }
+    function createRipple(x,y){
+      ripples.push({
+        x,y,radius:10, alpha: 1
+      });
 
-    function drawEdgeGlow(normX, normY) {
-      // Remove old glow element if present
-      document.getElementById('edge-glow')?.remove();
+      chime.currentTime = 0;
+      chime.play().catch(()=>{});
+    }
+    function drawRipples(){
+      for (let i = ripples.length -1; i >= 0; i --) {
+        const r = ripples[i];
+
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(120, 200, 255, ${r.alpha})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        r.radius += 4;
+        r.alpha -= 0.025;
+
+        if (r.alpha <= 0) {
+          ripples.splice(i, 1);
+        }
+      }
+    }
+    function startPlayBack(events){
+        playback.events = events;
+        playback.startTime = performance.now();
+        playback.playing = true;
+    }
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawRipples();
+      drawCursor();
+      drawStickyNote();
+      requestAnimationFrame(render);
+
+      if (playback.playing) {
+        const elapsed = performance.now() - playback.startTime;
+
+  // find the last event where timestamp <= elapsed
+        let event = playback.events[playback.events.length - 1];
+        for (let i = 0; i < playback.events.length; i++) {
+          if (playback.events[i].t >= elapsed) {
+            event = playback.events[i];
+            break;
+          }
+        }
+        cursor.x = event.x;
+        cursor.y = event.y;
+
+        if(target && !arrived){
+          const dx = cursor.x - target.x;
+          const dy = cursor.y - target.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+
+        if(dist < 0.05){
+          arrived = true;
+          createRipple(target.x*canvas.width, target.y*canvas.height);
+        }
+      }
+
+  // stop playback when finished
+        if (elapsed > playback.events[playback.events.length - 1].t) {
+          playback.playing = false;
+        }
+      }
+    }
+    render();
+
+
+    window.electron.onCursor(({ x, y }) => {
+      cursor.x = x;
+      cursor.y = y;
+
+      if(target && !arrived){
+        const dx = x-target.x;
+        const dy = y-target.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if(dist < 0.05){
+          arrived = true;
+          createRipple(target.x*canvas.width, target.y*canvas.height);
+      }
+    }
+  });
+
+  function drawStickyNote() {
+    if (!stickyNote) return;
+
+    const x = stickyNote.x * canvas.width;
+    const y = stickyNote.y * canvas.height;
+
+    const w = 180;
+    const h = 100;
+
+    ctx.fillStyle = "#fff7a8";
+    ctx.fillRect(x,y, w, h);
+
+    ctx.strokeStyle = "#e2d96f";
+    ctx.strokeRect(x,y, w, h);
+
+    ctx.fillStyle = "#333";
+    ctx.font = "16px sans-serif";
+    ctx.fillText(stickyNote.text, x + 10, y + 25);
+  };
 
       // Figure out which edge the target is closest to
       const distLeft   = normX;
@@ -390,6 +475,13 @@
       micBtn.classList.remove('recording');
       micBtn.textContent = '🎤';
     });
+    window.addEventListener("mousemove", (e) => {
+  const x = e.clientX / window.innerWidth;
+  const y = e.clientY / window.innerHeight;
+
+  window.electron.sendCursor({ x, y });
+  });
+  
   </script>
 </body>
 </html>
