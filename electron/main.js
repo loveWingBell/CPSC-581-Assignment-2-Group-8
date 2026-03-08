@@ -1,31 +1,25 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut } = require('electron');
 const { execSync } = require('child_process');
 const path = require('path');
 
 const isDev = process.env.NODE_ENV === 'development';
-let mainWindow;
-let overlayWindow;
-let trackingInterval = null;
-let trackedWindowTitle = null;
+let mainWindow, overlayWindow;
+let trackingInterval = null, trackedWindowTitle = null;
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 700,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-    },
+    width: 1000, height: 700,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
 
-  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowed = ['media', 'camera', 'microphone', 'video'];
-    callback(allowed.includes(permission));
-  });
+  // Grant camera, microphone, and speech permissions without prompting
+  const allowed = ['media', 'camera', 'microphone', 'video', 'speech'];
+  mainWindow.webContents.session.setPermissionRequestHandler((_, p, cb) => cb(allowed.includes(p)));
+  // Required for Web Speech API — silently checked before mic is opened
+  mainWindow.webContents.session.setPermissionCheckHandler((_, p) => allowed.includes(p));
 
-  isDev
-    ? mainWindow.loadURL('http://localhost:5173')
-    : mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  isDev ? mainWindow.loadURL('http://localhost:5173')
+        : mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 }
 
 // Use PowerShell to get the bounds of a window by its title
@@ -49,12 +43,10 @@ function getWindowBounds(title) {
       "$($rect.Left),$($rect.Top),$($rect.Right),$($rect.Bottom)"
     `;
     const result = execSync(`powershell -NoProfile -Command "${script.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { timeout: 1000 }).toString().trim();
-    const [left, top, right, bottom] = result.split(',').map(Number);
-    if (isNaN(left)) return null;
-    return { x: left, y: top, width: right - left, height: bottom - top };
-  } catch {
-    return null;
-  }
+    const [l, t, r, b] = result.split(',').map(Number);
+    if (isNaN(l)) return null;
+    return { x: l, y: t, width: r - l, height: b - t };
+  } catch { return null; }
 }
 
 // Poll the tracked window's position and resize overlay to match
@@ -63,12 +55,11 @@ function startWindowTracking() {
   trackingInterval = setInterval(() => {
     if (!overlayWindow || !trackedWindowTitle) return;
     const bounds = getWindowBounds(trackedWindowTitle);
-    if (bounds && bounds.width > 0 && bounds.height > 0) {
+    if (bounds?.width > 0 && bounds?.height > 0) {
       overlayWindow.setBounds(bounds);
-      // Send bounds to overlay so it can rescale its canvas
       overlayWindow.webContents.send('window-bounds', bounds);
     }
-  }, 500); // check every 500ms
+  }, 500);
 }
 
 function stopWindowTracking() {
@@ -78,62 +69,34 @@ function stopWindowTracking() {
 
 function createOverlayWindow(bounds) {
   overlayWindow = new BrowserWindow({
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
-    transparent: true,
-    frame: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    focusable: false,
-    backgroundColor: '#00000000',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-    },
+    ...bounds, transparent: true, frame: false,
+    alwaysOnTop: true, skipTaskbar: true, focusable: false, backgroundColor: '#00000000',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
-
   overlayWindow.loadFile(path.join(__dirname, 'overlay.html'));
   overlayWindow.setIgnoreMouseEvents(true, { forward: true });
   overlayWindow.on('closed', () => { overlayWindow = null; });
-  overlayWindow.webContents.openDevTools({ mode: 'detach' }); // TEMPORARY, REMOVE LATER
 }
 
-app.whenReady().then(() => {
-  createMainWindow();
-});
+app.whenReady().then(createMainWindow);
 
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
-});
-
-// Desktop capture
+// Desktop capture — filter to only real visible windows
 ipcMain.handle('get-sources', async () => {
-  return await desktopCapturer.getSources({ types: ['window', 'screen'] });
+  const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 150, height: 150 } });
+  return sources.filter(s => s.name?.trim() && !s.name.includes('Marco Polo') && !s.name.includes('DevTools'));
 });
 
-// Novice call connected: hide main window, spawn overlay on the tracked window
 ipcMain.on('enter-overlay-mode', (_, windowTitle) => {
   trackedWindowTitle = windowTitle;
   const bounds = getWindowBounds(windowTitle) || screen.getPrimaryDisplay().workAreaSize;
   mainWindow.hide();
   createOverlayWindow(bounds);
   startWindowTracking();
-  startInputTracking();
 });
 
-// Forward ghost cursor coords to overlay
-ipcMain.on('ghost-cursor', (_, data) => {
-  if (overlayWindow) overlayWindow.webContents.send('ghost-cursor', data);
-});
+ipcMain.on('ghost-cursor',    (_, data)   => { if (overlayWindow) overlayWindow.webContents.send('ghost-cursor', data); });
+ipcMain.on('set-ignore-mouse',(_, ignore) => { if (overlayWindow) overlayWindow.setIgnoreMouseEvents(ignore, { forward: true }); });
 
-// Toggle click-through for End Call hover zone
-ipcMain.on('set-ignore-mouse', (_, ignore) => {
-  if (overlayWindow) overlayWindow.setIgnoreMouseEvents(ignore, { forward: true });
-});
-
-// End call: close overlay, stop tracking, show main window
 ipcMain.on('exit-overlay-mode', () => {
   stopWindowTracking();
   if (overlayWindow) { overlayWindow.close(); overlayWindow = null; }
@@ -141,50 +104,31 @@ ipcMain.on('exit-overlay-mode', () => {
 });
 
 ipcMain.on('stuck-signal', (_, stuck) => {
-  console.log('main.js received stuck-signal:', stuck, '| overlayWindow exists:', !!overlayWindow);
-  if (overlayWindow) overlayWindow.webContents.send('stuck-signal', stuck);
+  if (overlayWindow) {
+    overlayWindow.webContents.send('stuck-signal', stuck);
+  } else if (stuck) {
+    // Overlay not ready yet — retry in 1 second
+    setTimeout(() => { if (overlayWindow) overlayWindow.webContents.send('stuck-signal', stuck); }, 1000);
+  }
 });
 
-const { globalShortcut } = require('electron');
+// Forward help request from overlay → main window → data channel in React
+ipcMain.on('help-request', (_, text) => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('help-request', text);
+});
 
-// OS-level idle + undo tracking, forwarded to the React app
-let lastMousePos    = { x: 0, y: 0 };
-let lastMoveTime    = Date.now();
-let undoTimes       = [];
-const UNDO_WINDOW_MS = 10000;
+// Overlay asks main window to start recording (speech API needs localhost)
+ipcMain.on('start-recording', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.showInactive();
+    mainWindow.webContents.send('start-recording');
+  }
+});
 
-function startInputTracking() {
-  // Poll mouse position every second
-  trackingInterval = setInterval(() => {
-    const pos = screen.getCursorScreenPoint();
+// Main window sends transcript back to overlay, then re-hides
+ipcMain.on('transcript', (_, text) => {
+  mainWindow.hide();
+  if (overlayWindow) overlayWindow.webContents.send('transcript', text);
+});
 
-    // Check if mouse moved
-    if (pos.x !== lastMousePos.x || pos.y !== lastMousePos.y) {
-      lastMousePos = pos;
-      lastMoveTime = Date.now();
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('os-mouse-moved');
-      }
-    }
-
-    // Send idle status
-    const idleMs = Date.now() - lastMoveTime;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('os-idle', idleMs);
-    }
-  }, 1000);
-
-  // Global Ctrl+Z listener
-  globalShortcut.register('CommandOrControl+Z', () => {
-    undoTimes = undoTimes.filter(t => Date.now() - t < UNDO_WINDOW_MS);
-    undoTimes.push(Date.now());
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('os-undo', undoTimes.length);
-    }
-  });
-}
-
-function stopInputTracking() {
-  globalShortcut.unregister('CommandOrControl+Z');
-  undoTimes = [];
-}
+app.on('will-quit', () => globalShortcut.unregisterAll());

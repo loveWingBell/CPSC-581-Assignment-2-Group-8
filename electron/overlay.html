@@ -4,173 +4,391 @@
   <meta charset="UTF-8" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100vw; height: 100vh;
-      background: transparent;
-      overflow: hidden;
-    }
-    canvas {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
-      pointer-events: none;
-    }
+    html, body { width: 100vw; height: 100vh; background: transparent; overflow: hidden; }
+
+    canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; }
+
     #end-call-btn {
-      position: fixed;
-      bottom: 24px; right: 24px;
-      padding: 10px 22px;
-      background: #c0392b;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: bold;
-      cursor: pointer;
-      pointer-events: all;
-      z-index: 9999;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.5);
-      opacity: 0;
-      transition: opacity 0.2s ease;
+      position: fixed; bottom: 24px; right: 24px;
+      padding: 10px 22px; background: #c0392b; color: #fff;
+      border: none; border-radius: 8px; font-size: 15px; font-weight: bold;
+      cursor: pointer; pointer-events: all; z-index: 9999;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.2s ease;
     }
-    #end-call-btn.visible {
-      opacity: 1;
-    }
+    #end-call-btn.visible { opacity: 1; }
+
     #help-indicator {
-    position: fixed;
-    bottom: 24px;
-    left: 24px;
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: rgba(100, 108, 255, 0.9);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-    cursor: pointer;
-    pointer-events: all;
-    z-index: 9999;
-    opacity: 0;
-    transform: scale(0.8);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-    box-shadow: 0 0 0 0 rgba(100, 108, 255, 0.7);
-  }
-  #help-indicator.visible {
-    opacity: 1;
-    transform: scale(1);
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0   rgba(100, 108, 255, 0.7); }
-    70%  { box-shadow: 0 0 0 16px rgba(100, 108, 255, 0);   }
-    100% { box-shadow: 0 0 0 0   rgba(100, 108, 255, 0);    }
-  }
+      position: fixed; bottom: 24px; left: 24px;
+      width: 48px; height: 48px; border-radius: 50%;
+      background: rgba(100, 108, 255, 0.9);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; cursor: pointer; pointer-events: all; z-index: 9999;
+      opacity: 0; transform: scale(0.8);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    #help-indicator.visible { opacity: 1; transform: scale(1); animation: pulse 2s infinite; }
+
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0    rgba(100, 108, 255, 0.7); }
+      70%  { box-shadow: 0 0 0 16px rgba(100, 108, 255, 0);   }
+      100% { box-shadow: 0 0 0 0    rgba(100, 108, 255, 0);   }
+    }
+
+    #voice-panel {
+      position: fixed; bottom: 90px; left: 24px; width: 320px;
+      background: rgba(20, 20, 30, 0.95); border-radius: 12px; padding: 16px;
+      z-index: 9999; pointer-events: all;
+      display: none; flex-direction: column; gap: 10px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+    }
+    #voice-panel.visible { display: flex; }
+
+    #panel-label {
+      color: rgba(255,255,255,0.6); font-size: 12px;
+      font-family: sans-serif; text-align: center;
+    }
+
+    #mic-btn {
+      width: 56px; height: 56px; border-radius: 50%; border: none;
+      background: #646cff; color: white; font-size: 24px;
+      cursor: pointer; align-self: center; transition: background 0.2s;
+    }
+    #mic-btn.recording { background: #c0392b; animation: pulse 1s infinite; }
+
+    #transcript-input {
+      background: rgba(255,255,255,0.08); border-radius: 8px; padding: 10px;
+      color: #fff; font-size: 13px; min-height: 72px; resize: none;
+      font-family: sans-serif; border: 1px solid rgba(255,255,255,0.15);
+      outline: none; width: 100%;
+    }
+    #transcript-input::placeholder { color: rgba(255,255,255,0.35); }
+
+    #send-btn {
+      padding: 8px 16px; background: #2ecc71; color: #fff;
+      border: none; border-radius: 8px; font-size: 14px;
+      font-weight: bold; cursor: pointer; display: none;
+    }
+    #send-btn.visible { display: block; }
+
+    #cancel-voice-btn {
+      padding: 6px 12px; background: transparent; color: rgba(255,255,255,0.5);
+      border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
+      font-size: 12px; cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <canvas id="overlay-canvas"></canvas>
   <button id="end-call-btn">End Call</button>
-
   <div id="help-indicator" title="Having trouble?">❓</div>
 
+  <div id="voice-panel">
+    <p id="panel-label">Describe your problem</p>
+    <button id="mic-btn">🎤</button>
+    <textarea id="transcript-input" placeholder="Tap mic to record, or type here..."></textarea>
+    <button id="send-btn">Send to Expert</button>
+    <button id="cancel-voice-btn">Cancel</button>
+  </div>
+
   <script>
-    const canvas = document.getElementById('overlay-canvas');
-    const ctx = canvas.getContext('2d');
-    const btn = document.getElementById('end-call-btn');
-    const helpBtn = document.getElementById('help-indicator');
+    const canvas     = document.getElementById('overlay-canvas');
+    const ctx        = canvas.getContext('2d');
+    const endBtn     = document.getElementById('end-call-btn');
+    const helpBtn    = document.getElementById('help-indicator');
+    const voicePanel = document.getElementById('voice-panel');
+    const micBtn     = document.getElementById('mic-btn');
+    const input      = document.getElementById('transcript-input');
+    const sendBtn    = document.getElementById('send-btn');
+    const cancelBtn  = document.getElementById('cancel-voice-btn');
 
-    window.electron.onStuck((stuck) => {
-      console.log('overlay received stuck:', stuck);
-      helpBtn.classList.toggle('visible', stuck);
+    let audioCtx   = null;
+    let panner     = null;
+    let oscillator = null;
+    let gainNode   = null;
+
+    let noviceX = 0.5, noviceY = 0.5; // normalised, default center
+
+    const rings = []; // { x, y, radius, maxRadius, alpha }
+
+    window.addEventListener('mousemove', (e) => {
+      noviceX = e.clientX / window.innerWidth;
+      noviceY = e.clientY / window.innerHeight;
     });
 
-    // Make help button area clickable too
-    helpBtn.addEventListener('mouseenter', () => window.electron.setIgnoreMouse(false));
-    helpBtn.addEventListener('mouseleave', () => {
-      if (!inZone && !inBtn) window.electron.setIgnoreMouse(true);
-    });
-    helpBtn.addEventListener('click', () => {
-      // Phase 4 will handle what happens when this is clicked
-      console.log('Novice asked for help');
-    });
+    // ── Spatial audio ─────────────────────────────────────────────────────────
 
-    // Canvas starts at window size, updates if window moves/resizes
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx  = new AudioContext();
+      gainNode  = audioCtx.createGain();
+      gainNode.gain.value = 0.15; // quiet hum
+      gainNode.connect(audioCtx.destination);
+
+      // PannerNode — positions the audio in 3D space
+      panner = audioCtx.createPanner();
+      panner.panningModel  = 'HRTF';
+      panner.distanceModel = 'inverse';
+      panner.refDistance   = 1;
+      panner.maxDistance   = 10;
+      panner.rolloffFactor = 1;
+      panner.connect(gainNode);
+
+      // Continuous hum — pitch maps to distance from novice cursor
+      oscillator = audioCtx.createOscillator();
+      oscillator.type            = 'sine';
+      oscillator.frequency.value = 220;
+      oscillator.connect(panner);
+      oscillator.start();
+    }
+
+    function spawnRings(x, y) {
+      // Spawn 3 rings staggered in time
+      for (let i = 0; i < 3; i++) {
+        setTimeout(() => rings.push({ x, y, radius: 0, maxRadius: 80, alpha: 0.8 }), i * 200);
+      }
+    }
+
+    // ── Canvas resize ─────────────────────────────────────────────────────────
     function resizeCanvas(w, h) {
       canvas.width  = w || window.innerWidth;
       canvas.height = h || window.innerHeight;
     }
     resizeCanvas();
-
-    // Receive updated window bounds when tracked window moves
     window.electron.onBounds(({ width, height }) => resizeCanvas(width, height));
 
-    // Draw ghost cursor at normalised coords
-    function drawCursor(normX, normY) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const x = normX * canvas.width;
-      const y = normY * canvas.height;
+    // ── Ghost cursor ──────────────────────────────────────────────────────────
+    let targetX = null, targetY = null, currentX = null, currentY = null;
+    const SMOOTH = 0.6;
 
-      ctx.beginPath();
-      ctx.arc(x, y, 14, 0, 2 * Math.PI);
+    function drawCursor(x, y) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.strokeStyle = 'rgba(255, 80, 80, 0.95)';
       ctx.lineWidth = 2.5;
-      ctx.stroke();
-
+      ctx.beginPath(); ctx.arc(x, y, 14, 0, 2 * Math.PI); ctx.stroke();
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y);
       ctx.moveTo(x, y - 9); ctx.lineTo(x, y + 9);
-      ctx.strokeStyle = 'rgba(255, 80, 80, 0.95)';
-      ctx.lineWidth = 2;
       ctx.stroke();
     }
 
-    window.electron.onCursor(({ x, y }) => drawCursor(x, y));
+    function drawEdgeGlow(normX, normY) {
+      // Remove old glow element if present
+      document.getElementById('edge-glow')?.remove();
 
-    // Hover zone: bottom-right 180x90px area
-    // Use JS tracking so button stays visible when mouse moves onto it
-    let inZone = false;
-    let inBtn  = false;
+      // Figure out which edge the target is closest to
+      const distLeft   = normX;
+      const distRight  = 1 - normX;
+      const distTop    = normY;
+      const distBottom = 1 - normY;
+      const minDist    = Math.min(distLeft, distRight, distTop, distBottom);
 
-    function updateVisibility() {
-      if (inZone || inBtn) {
-        btn.classList.add('visible');
-        window.electron.setIgnoreMouse(false);
+      const el = document.createElement('div');
+      el.id = 'edge-glow';
+      Object.assign(el.style, { position: 'fixed', pointerEvents: 'none', zIndex: '9990', opacity: '0.6', transition: 'opacity 0.3s' });
+
+      if (minDist === distLeft) {
+        Object.assign(el.style, { top: 0, left: 0, width: '120px', height: '100vh',
+          background: 'linear-gradient(to right, rgba(100,108,255,0.7), transparent)' });
+      } else if (minDist === distRight) {
+        Object.assign(el.style, { top: 0, right: 0, width: '120px', height: '100vh',
+          background: 'linear-gradient(to left, rgba(100,108,255,0.7), transparent)' });
+      } else if (minDist === distTop) {
+        Object.assign(el.style, { top: 0, left: 0, width: '100vw', height: '120px',
+          background: 'linear-gradient(to bottom, rgba(100,108,255,0.7), transparent)' });
       } else {
-        btn.classList.remove('visible');
-        window.electron.setIgnoreMouse(true);
+        Object.assign(el.style, { bottom: 0, left: 0, width: '100vw', height: '120px',
+          background: 'linear-gradient(to top, rgba(100,108,255,0.7), transparent)' });
       }
+
+      document.body.appendChild(el);
     }
 
-    // Detect mouse near bottom-right corner via mousemove on the document
-    // (only fires when setIgnoreMouseEvents is false, so we poll instead)
-    function checkCorner(e) {
-      const margin = 180;
-      const marginY = 90;
-      const nearCorner =
-        e.clientX > window.innerWidth  - margin &&
-        e.clientY > window.innerHeight - marginY;
-      if (nearCorner !== inZone) {
-        inZone = nearCorner;
-        updateVisibility();
-      }
-    }
+    (function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Poll mouse position via a transparent tracking div
-    const tracker = document.createElement('div');
-    Object.assign(tracker.style, {
-      position: 'fixed', bottom: '0', right: '0',
-      width: '180px', height: '90px',
-      pointerEvents: 'all', zIndex: '9998',
+      // Draw ghost cursor
+      if (targetX !== null) {
+        currentX = currentX === null ? targetX : currentX + SMOOTH * (targetX - currentX);
+        currentY = currentY === null ? targetY : currentY + SMOOTH * (targetY - currentY);
+        drawCursor(currentX, currentY);
+      }
+
+      // Draw sonar rings
+      for (let i = rings.length - 1; i >= 0; i--) {
+        const r = rings[i];
+        r.radius += 1.5;
+        r.alpha  -= 0.012;
+        if (r.alpha <= 0) { rings.splice(i, 1); continue; }
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.radius, 0, 2 * Math.PI);
+        ctx.strokeStyle = `rgba(100, 108, 255, ${r.alpha})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      requestAnimationFrame(animate);
+    })();
+
+    let lastRingTime = 0;
+
+    window.electron.onCursor(({ x, y, tag }) => {
+      const px = x * canvas.width;   // pixel coords of expert target
+      const py = y * canvas.height;
+
+      targetX = px;
+      targetY = py;
+
+      initAudio(); // safe to call every time — no-ops after first call
+
+      // Distance from novice cursor to expert target (normalised 0–1)
+      const dist = Math.hypot(x - noviceX, y - noviceY);
+
+      if (tag === 'world_space') {
+        // ── Spatial audio: position panner at target relative to listener ────
+        // Map normalised coords to a -5..5 world space
+        const worldX = (x - 0.5) * 10;
+        const worldY = (y - 0.5) * 10; // y axis (up/down on screen)
+        panner.positionX.setValueAtTime(worldX,  audioCtx.currentTime);
+        panner.positionY.setValueAtTime(-worldY, audioCtx.currentTime); // invert: screen-down = audio-down
+        panner.positionZ.setValueAtTime(-1,      audioCtx.currentTime);
+        audioCtx.listener.positionX.setValueAtTime(0, audioCtx.currentTime);
+        audioCtx.listener.positionY.setValueAtTime(0, audioCtx.currentTime);
+        audioCtx.listener.positionZ.setValueAtTime(0, audioCtx.currentTime);
+
+        // ── Hum pitch: closer = higher pitch (220Hz far → 880Hz close) ───────
+        const freq = 220 + (1 - Math.min(dist, 1)) * 660;
+        oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
+        gainNode.gain.setTargetAtTime(0.15, audioCtx.currentTime, 0.1);
+
+        // Remove any edge glow from a previous ui_element cursor
+        document.getElementById('edge-glow')?.remove();
+
+      } else {
+        // ── UI Element: edge glow from nearest screen edge ───────────────────
+        gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); // silence hum
+        drawEdgeGlow(x, y);
+      }
+
+      // ── Sonar rings every 800ms ───────────────────────────────────────────
+      const now = Date.now();
+      if (now - lastRingTime > 800) {
+        spawnRings(px, py);
+        lastRingTime = now;
+      }
+
+      // ── Haptics: pulse as novice gets within 0.15 of target ──────────────
+      if (dist < 0.15 && navigator.vibrate) navigator.vibrate(50);
     });
-    tracker.addEventListener('mouseenter', () => { inZone = true;  updateVisibility(); });
-    tracker.addEventListener('mouseleave', () => { inZone = false; updateVisibility(); });
+
+    // ── Stuck signal → show help indicator ────────────────────────────────────
+    window.electron.onStuck((stuck) => {
+      helpBtn.classList.toggle('visible', stuck);
+    });
+
+    // ── Mouse passthrough logic ───────────────────────────────────────────────
+    let inZone = false, inEndBtn = false, inHelp = false, inPanel = false;
+
+    function updatePassthrough() {
+      window.electron.setIgnoreMouse(!(inZone || inEndBtn || inHelp || inPanel));
+      endBtn.classList.toggle('visible', inZone || inEndBtn);
+    }
+
+    // Hover zone for End Call button (bottom-right corner)
+    const tracker = document.createElement('div');
+    Object.assign(tracker.style, { position: 'fixed', bottom: '0', right: '0', width: '180px', height: '90px', pointerEvents: 'all', zIndex: '9998' });
+    tracker.addEventListener('mouseenter', () => { inZone = true;  updatePassthrough(); });
+    tracker.addEventListener('mouseleave', () => { inZone = false; updatePassthrough(); });
     document.body.appendChild(tracker);
 
-    btn.addEventListener('mouseenter', () => { inBtn = true;  updateVisibility(); });
-    btn.addEventListener('mouseleave', () => { inBtn = false; updateVisibility(); });
+    endBtn.addEventListener('mouseenter', () => { inEndBtn = true;  updatePassthrough(); });
+    endBtn.addEventListener('mouseleave', () => { inEndBtn = false; updatePassthrough(); });
+    endBtn.addEventListener('click', () => window.electron.exitOverlayMode());
 
-    btn.addEventListener('click', () => {
-      window.electron.exitOverlayMode();
+    helpBtn.addEventListener('mouseenter', () => { inHelp = true;  updatePassthrough(); });
+    helpBtn.addEventListener('mouseleave', () => { inHelp = false; updatePassthrough(); });
+    helpBtn.addEventListener('click', () => {
+      voicePanel.classList.add('visible');
+      inPanel = true;
+      updatePassthrough();
+      input.focus();
+    });
+
+    voicePanel.addEventListener('mouseenter', () => { inPanel = true;  updatePassthrough(); });
+    voicePanel.addEventListener('mouseleave', () => { inPanel = false; updatePassthrough(); });
+
+    // Show Send button when there's text
+    input.addEventListener('input', () => {
+      sendBtn.classList.toggle('visible', input.value.trim().length > 0);
+    });
+
+    // ── Mic button — toggles recording in main window ─────────────────────────
+    let isRecording = false;
+
+    micBtn.addEventListener('click', () => {
+      isRecording = !isRecording;
+      micBtn.classList.toggle('recording', isRecording);
+      micBtn.textContent = isRecording ? '⏹' : '🎤';
+      if (isRecording) input.value = 'Listening...';
+      window.electron.startRecording();
+    });
+
+    // Receive live + final transcript from main window
+    window.electron.onTranscript((raw) => {
+      let msg;
+      try { msg = JSON.parse(raw); } catch { return; }
+
+      if (msg.type === 'interim') {
+        input.value = msg.text;
+        // Don't allow sending placeholder states
+        const isPlaceholder = msg.text === 'Recording...' || msg.text === 'Transcribing...';
+        sendBtn.classList.toggle('visible', !isPlaceholder && msg.text.trim().length > 0);
+
+      } else if (msg.type === 'final') {
+        isRecording = false;
+        micBtn.classList.remove('recording');
+        micBtn.textContent = '🎤';
+        if (msg.text) {
+          input.value = msg.text;
+          sendBtn.classList.add('visible');
+        }
+        input.focus();
+
+      } else if (msg.type === 'error') {
+        isRecording = false;
+        micBtn.classList.remove('recording');
+        micBtn.textContent = '🎤';
+        if (input.value === 'Recording...') input.value = '';
+        input.placeholder = msg.text || 'Voice unavailable — type your problem here';
+        input.focus();
+      }
+    });
+
+    // ── Send + Cancel ─────────────────────────────────────────────────────────
+    sendBtn.addEventListener('click', () => {
+      const text = input.value.trim();
+      if (!text) return;
+      window.electron.sendHelpRequest(text);
+      voicePanel.classList.remove('visible');
+      helpBtn.classList.remove('visible');
+      inPanel = false;
+      updatePassthrough();
+      input.value = '';
+      sendBtn.classList.remove('visible');
+      isRecording = false;
+      micBtn.classList.remove('recording');
+      micBtn.textContent = '🎤';
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      if (isRecording) { isRecording = false; window.electron.startRecording(); }
+      voicePanel.classList.remove('visible');
+      inPanel = false;
+      updatePassthrough();
+      input.value = '';
+      sendBtn.classList.remove('visible');
+      micBtn.classList.remove('recording');
+      micBtn.textContent = '🎤';
     });
   </script>
 </body>

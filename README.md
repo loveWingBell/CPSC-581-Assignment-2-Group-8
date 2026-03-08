@@ -4,36 +4,19 @@
 ### Phase 1 — Get Two Screens Talking (WebRTC)
 ### Phase 2 — Canvas Overlay
 ### Phase 3 — Stuck Detection (kinda, only detects face and not undo or mouse)
-### Phase 4 — Voice + Queue
-### Phase 5 — Marco-Polo
+### Phase 4 — Voice + Queue (still need to check queue + make it so the text can be edited)
+### Phase 5 — Marco-Polo (only humming right now)
 
 # WIP
-
-### Phase 3 — Stuck Detection (kinda, only detects face and not undo)
-- Use **MediaPipe FaceMesh** on the novice's webcam to track eye gaze and facial expression.
-- Use **Teachable Machine** to train a two-class model: record yourself looking frustrated/stuck vs. focused/working. Export it and drop it into the web app — it runs entirely in the browser.
-- Combine: Teachable Machine says "stuck" + cursor has been idle 15s + you can detect repeated Ctrl+Z via a keydown listener. All three = show the ambient pulsing indicator.
-At the end of this phase: the pulsing help icon appears automatically when the novice seems stuck.
-
-### Phase 4 — Voice + Queue
-- Use the browser's built-in **Web Speech API** (`SpeechRecognition`) for the novice's voice input. Show the transcript so they can correct Blender terms before sending.
-- Send the confirmed text through the WebRTC data channel to the expert.
-- For async (no expert online): store the request in **Firebase Firestore** so it can be picked up later.
-
-### Phase 5 — Marco-Polo
-- **Spatial audio**: Use Web Audio API's `PannerNode`. Set the target's `{x, y}` as a 3D position (treat the screen as a flat plane at z=0). As the novice moves their cursor, update the listener position. "Polo" audio will appear to come from the correct direction.
-- **Continuous hum**: A looping `OscillatorNode` whose frequency is mapped to the cursor's distance from the target. Closer = higher pitch.
-- **Haptics**: `navigator.vibrate([100])` pulsing on mobile as they approach.
-- **Sonar rings**: On the Canvas, draw expanding circles from the target coordinates, animated with `requestAnimationFrame`.
-- For **UI element targets**, skip the PannerNode and instead draw a directional gradient glow bleeding in from the correct screen edge toward the target panel.
-
-# WHAT'S LEFT
-
 
 ### Phase 6 — Sticky Notes + Playback
 - A sticky note is just a Canvas element anchored to `{x, y}` coordinates (screen space for UI elements, or a stored position for 3D space).
 - For 3D space anchoring, the simplest approach: when the expert drops the note, store the `{x, y}` as a percentage of the viewport dimensions so it scales if the window resizes.
 - Playback is just re-running the recorded stream of `{x, y, timestamp}` cursor events through the canvas at the original speed, with the expert's voice audio playing simultaneously.
+
+
+# WHAT'S LEFT
+
 ### Phase 7 — Novice Stamp
 - After playback ends, show three buttons: "Worked," "Still confused," + mic for re-recording.
 - Send the response back through the data channel or write it to Firestore.
