@@ -5,6 +5,8 @@ const path = require('path');
 const isDev = process.env.NODE_ENV === 'development';
 let mainWindow, overlayWindow;
 let trackingInterval = null, trackedWindowTitle = null;
+let cursorPollInterval = null;
+let panelOpen = false; // true while voice panel is open — keeps overlay interactive
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
@@ -12,17 +14,14 @@ function createMainWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
 
-  // Grant camera, microphone, and speech permissions without prompting
   const allowed = ['media', 'camera', 'microphone', 'video', 'speech'];
   mainWindow.webContents.session.setPermissionRequestHandler((_, p, cb) => cb(allowed.includes(p)));
-  // Required for Web Speech API — silently checked before mic is opened
   mainWindow.webContents.session.setPermissionCheckHandler((_, p) => allowed.includes(p));
 
   isDev ? mainWindow.loadURL('http://localhost:5173')
         : mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 }
 
-// Use PowerShell to get the bounds of a window by its title
 function getWindowBounds(title) {
   try {
     const script = `
@@ -49,7 +48,6 @@ function getWindowBounds(title) {
   } catch { return null; }
 }
 
-// Poll the tracked window's position and resize overlay to match
 function startWindowTracking() {
   if (trackingInterval) clearInterval(trackingInterval);
   trackingInterval = setInterval(() => {
@@ -67,6 +65,46 @@ function stopWindowTracking() {
   trackedWindowTitle = null;
 }
 
+// Poll the OS cursor position every 50ms.
+// This replaces { forward: true } entirely — no IPC overhead on every mouse move.
+// When the cursor is in an interactive zone, we disable ignore-mouse so the overlay
+// gets real events. When it leaves, we re-enable ignore-mouse with no forwarding,
+// so mouse events go straight to Blender with zero latency.
+function startCursorPoll() {
+  if (cursorPollInterval) clearInterval(cursorPollInterval);
+  cursorPollInterval = setInterval(() => {
+    if (!overlayWindow) return;
+    const cursor = screen.getCursorScreenPoint();
+    const b = overlayWindow.getBounds();
+
+    // Cursor position relative to overlay window
+    const rx = cursor.x - b.x;
+    const ry = cursor.y - b.y;
+    const w  = b.width;
+    const h  = b.height;
+
+    // Hot zones (pixels from edges)
+    const inEndZone  = rx > w - 220 && ry > h - 110 && rx <= w && ry <= h;
+    const inHelpZone = rx >= 0 && rx <= 380 && ry >= h - 420 && ry <= h;
+
+    // Normalised cursor position so overlay can check note proximity
+    const normX = w > 0 ? rx / w : 0.5;
+    const normY = h > 0 ? ry / h : 0.5;
+
+    const shouldInteract = inEndZone || inHelpZone || panelOpen;
+
+    // Toggle mouse passthrough — no { forward: true } ever
+    overlayWindow.setIgnoreMouseEvents(!shouldInteract);
+
+    // Tell overlay what zone the cursor is in + its normalized position
+    overlayWindow.webContents.send('zone-change', { inEndZone, inHelpZone, normX, normY });
+  }, 50);
+}
+
+function stopCursorPoll() {
+  if (cursorPollInterval) { clearInterval(cursorPollInterval); cursorPollInterval = null; }
+}
+
 function createOverlayWindow(bounds) {
   overlayWindow = new BrowserWindow({
     ...bounds, transparent: true, frame: false,
@@ -74,13 +112,14 @@ function createOverlayWindow(bounds) {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
   overlayWindow.loadFile(path.join(__dirname, 'overlay.html'));
-  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
-  overlayWindow.on('closed', () => { overlayWindow = null; });
+  // Start with mouse ignored, no forwarding — Blender gets full-speed events
+  overlayWindow.setIgnoreMouseEvents(true);
+  overlayWindow.on('closed', () => { overlayWindow = null; stopCursorPoll(); });
+  startCursorPoll();
 }
 
 app.whenReady().then(createMainWindow);
 
-// Desktop capture — filter to only real visible windows
 ipcMain.handle('get-sources', async () => {
   const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 150, height: 150 } });
   return sources.filter(s => s.name?.trim() && !s.name.includes('Marco Polo') && !s.name.includes('DevTools'));
@@ -94,11 +133,34 @@ ipcMain.on('enter-overlay-mode', (_, windowTitle) => {
   startWindowTracking();
 });
 
-ipcMain.on('ghost-cursor',    (_, data)   => { if (overlayWindow) overlayWindow.webContents.send('ghost-cursor', data); });
-ipcMain.on('set-ignore-mouse',(_, ignore) => { if (overlayWindow) overlayWindow.setIgnoreMouseEvents(ignore, { forward: true }); });
+ipcMain.on('ghost-cursor', (_, data) => {
+  if (overlayWindow) overlayWindow.webContents.send('ghost-cursor', data);
+});
+
+// set-ignore-mouse is still available for when the voice panel is open/closed
+ipcMain.on('set-ignore-mouse', (_, ignore) => {
+  if (overlayWindow) overlayWindow.setIgnoreMouseEvents(ignore);
+});
+
+// Overlay tells us when the voice panel opens/closes so we keep it interactive
+ipcMain.on('panel-open', (_, isOpen) => {
+  panelOpen = isOpen;
+  // Immediately apply — don't wait for next poll tick
+  if (overlayWindow) overlayWindow.setIgnoreMouseEvents(!isOpen);
+});
+
+// Allow overlay to become keyboard-focusable when voice panel needs text input
+ipcMain.on('set-focusable', (_, val) => {
+  if (overlayWindow) overlayWindow.setFocusable(val);
+});
+ipcMain.on('focus-overlay', () => {
+  if (overlayWindow) overlayWindow.focus();
+});
 
 ipcMain.on('exit-overlay-mode', () => {
   stopWindowTracking();
+  stopCursorPoll();
+  panelOpen = false;
   if (overlayWindow) { overlayWindow.close(); overlayWindow = null; }
   mainWindow.show();
 });
@@ -107,32 +169,18 @@ ipcMain.on('stuck-signal', (_, stuck) => {
   if (overlayWindow) {
     overlayWindow.webContents.send('stuck-signal', stuck);
   } else if (stuck) {
-    // Overlay not ready yet — retry in 1 second
     setTimeout(() => { if (overlayWindow) overlayWindow.webContents.send('stuck-signal', stuck); }, 1000);
   }
 });
 
-// Forward help request from overlay → main window → data channel in React
 ipcMain.on('help-request', (_, text) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('help-request', text);
 });
 
-// Novice cursor arrived at target — forward to main window to show stamp panel
 ipcMain.on('arrival', () => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('arrival');
 });
 
-// Allow overlay to become keyboard-focusable when voice panel is open
-ipcMain.on('set-focusable', (_, val) => {
-  if (overlayWindow) overlayWindow.setFocusable(val);
-});
-
-// Focus the overlay window so the textarea can receive keyboard input
-ipcMain.on('focus-overlay', () => {
-  if (overlayWindow) overlayWindow.focus();
-});
-
-// Overlay asks main window to start recording (speech API needs localhost)
 ipcMain.on('start-recording', () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.showInactive();
@@ -140,7 +188,6 @@ ipcMain.on('start-recording', () => {
   }
 });
 
-// Main window sends transcript back to overlay, then re-hides
 ipcMain.on('transcript', (_, text) => {
   mainWindow.hide();
   if (overlayWindow) overlayWindow.webContents.send('transcript', text);
