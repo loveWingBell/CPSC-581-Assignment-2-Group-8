@@ -1,7 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Helper: remove any existing listeners before adding a new one, so React
-// re-renders and hot-reloads never stack up duplicate handlers
 function on(channel, cb) {
   ipcRenderer.removeAllListeners(channel);
   ipcRenderer.on(channel, cb);
@@ -13,6 +11,9 @@ contextBridge.exposeInMainWorld('electron', {
   exitOverlayMode:  () => ipcRenderer.send('exit-overlay-mode'),
   sendCursor:       (data) => ipcRenderer.send('ghost-cursor', data),
   setIgnoreMouse:   (ignore) => ipcRenderer.send('set-ignore-mouse', ignore),
+  setPanelOpen:     (open) => ipcRenderer.send('panel-open', open),
+  setFocusable:     (val) => ipcRenderer.send('set-focusable', val),
+  focusOverlay:     () => ipcRenderer.send('focus-overlay'),
   sendStuck:        (stuck) => ipcRenderer.send('stuck-signal', stuck),
   sendHelpRequest:  (text) => ipcRenderer.send('help-request', text),
   sendArrival:      () => ipcRenderer.send('arrival'),
@@ -20,6 +21,7 @@ contextBridge.exposeInMainWorld('electron', {
   sendTranscript:   (text) => ipcRenderer.send('transcript', text),
   onCursor:         (cb) => on('ghost-cursor',    (_, data) => cb(data)),
   onBounds:         (cb) => on('window-bounds',   (_, data) => cb(data)),
+  onZoneChange:     (cb) => on('zone-change',     (_, data) => cb(data)),
   onStuck:          (cb) => on('stuck-signal',    (_, data) => cb(data)),
   onHelpRequest:    (cb) => on('help-request',    (_, text) => cb(text)),
   onArrival:        (cb) => on('arrival',         () => cb()),
