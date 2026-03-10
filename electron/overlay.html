@@ -309,6 +309,7 @@
     // State -----------------------------------------------------
     let noviceX = 0.5, noviceY = 0.5;
     let panelOpenLocal = false;
+    let overNoteActive = false;
     let activeNoteIdx  = -1;
     let noteAudio      = null;
     let ttsSpeaking    = false;
@@ -473,11 +474,19 @@
       helpBtn.classList.toggle('visible', helpVisible);
 
       const overNote = marcoNotes.some(n =>
-        !n.dismissed && n.revealed && Math.hypot(n.x - normX, n.y - normY) < 0.04);
+        !n.dismissed && n.revealed && Math.hypot(n.x - normX, n.y - normY) < 0.06);
       clickCatcher.style.pointerEvents = overNote ? 'all' : 'none';
-      if (overNote && !panelOpenLocal) window.electron.setIgnoreMouse(false);
-      else if (!overNote && !panelOpenLocal && !inEndZone && !inHelpZone)
-        window.electron.setIgnoreMouse(true);
+      if (!panelOpenLocal) {
+        if (overNote && !overNoteActive) {
+          overNoteActive = true;
+          window.electron.setPanelOpen(true);
+        } else if (!overNote && overNoteActive) {
+          overNoteActive = false;
+          window.electron.setPanelOpen(false);
+        } else if (!overNote && !inEndZone && !inHelpZone) {
+          window.electron.setIgnoreMouse(true);
+        }
+      }
 
       if (activeNoteIdx >= 0) positionFloatingUI(activeNoteIdx);
       if (marcoNotes.length > 0) scheduleAnimate();
@@ -503,7 +512,7 @@
       for (let i = 0; i < marcoNotes.length; i++) {
         if (!marcoNotes[i].revealed || marcoNotes[i].dismissed) continue;
         const d = Math.hypot(marcoNotes[i].x - nx, marcoNotes[i].y - ny);
-        if (d < 0.04 && d < closestDist) { closestDist = d; closest = i; }
+        if (d < 0.06 && d < closestDist) { closestDist = d; closest = i; }
       }
       if (closest !== -1) openNotePlayer(closest);
     });
@@ -711,10 +720,11 @@
     npStop.addEventListener('click', () => {
       stopCurrentPlayback();
       npPlay.textContent = '▶'; npFill.style.width = '0%';
-      // Collapse the note player without dismissing the note
       captionFloat.style.display  = 'none';
       controlsFloat.style.display = 'none';
+      stampPanel.classList.remove('visible'); // close feedback if open
       activeNoteIdx  = -1;
+      overNoteActive = false;
       panelOpenLocal = false;
       window.electron.setPanelOpen(false);
       window.electron.setFocusable(false);
@@ -743,6 +753,7 @@
       captionFloat.style.display  = 'none';
       controlsFloat.style.display = 'none';
       activeNoteIdx  = -1;
+      overNoteActive = false;
       panelOpenLocal = false;
       window.electron.setPanelOpen(false);
       window.electron.setFocusable(false);
@@ -847,15 +858,18 @@
       }
 
       // Sonar rings when cursor is right on the note (inside the reveal zone)
-      if (nearestDist < 0.025) {
+      if (nearestDist < 0.20) {
         spawnRings(nearest.x * canvas.width, nearest.y * canvas.height);
       }
     }
 
     window.electron.onMarcoDetected(() => {
-      // Visual debug flash — proves IPC arrived even if audio fails
-      document.body.style.outline = '3px solid #646cff';
-      setTimeout(() => { document.body.style.outline = ''; }, 400);
+      if (window.speechSynthesis) {
+        speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance('Polo');
+        utter.rate = 1.1; utter.pitch = 1.0; utter.volume = 1;
+        speechSynthesis.speak(utter);
+      }
       onMarco();
     });
 
