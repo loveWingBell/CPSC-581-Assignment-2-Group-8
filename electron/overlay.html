@@ -4,19 +4,22 @@
   <meta charset="UTF-8" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100vw; height: 100vh; background: transparent; overflow: hidden; }
+    html, body { width: 100vw; height: 100vh; background: transparent; overflow: hidden; font-family: sans-serif; }
 
     canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; }
 
+    /* End Call button */
     #end-call-btn {
       position: fixed; bottom: 24px; right: 24px;
       padding: 10px 22px; background: #c0392b; color: #fff;
       border: none; border-radius: 8px; font-size: 15px; font-weight: bold;
       cursor: pointer; pointer-events: all; z-index: 9999;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.2s ease;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+      opacity: 0; transition: opacity 0.2s ease;
     }
     #end-call-btn.visible { opacity: 1; }
 
+    /*  Help/"Having Trouble?" button */
     #help-indicator {
       position: fixed; bottom: 24px; left: 24px;
       width: 48px; height: 48px; border-radius: 50%;
@@ -26,70 +29,196 @@
       opacity: 0; transform: scale(0.8);
       transition: opacity 0.3s ease, transform 0.3s ease;
     }
-    #help-indicator.visible { opacity: 1; transform: scale(1); animation: helpPulse 2s infinite; }
+    #help-indicator.visible { opacity: 1; transform: scale(1); animation: pulse 2s infinite; }
 
-    @keyframes helpPulse {
-      0%   { box-shadow: 0 0 0 0    rgba(100, 108, 255, 0.7); }
-      70%  { box-shadow: 0 0 0 16px rgba(100, 108, 255, 0);   }
-      100% { box-shadow: 0 0 0 0    rgba(100, 108, 255, 0);   }
+    /* Cooldown SVG ring around help button  */
+    #cooldown-ring {
+      position: fixed; bottom: 18px; left: 18px;
+      width: 60px; height: 60px; border-radius: 50%;
+      pointer-events: none; z-index: 9998;
+      transform: rotate(-90deg);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #cooldown-ring.visible { opacity: 1; }
+    #cooldown-ring circle {
+      fill: none; stroke: rgba(100,108,255,0.4); stroke-width: 3;
+      stroke-dasharray: 163; stroke-dashoffset: 163;
     }
 
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0    rgba(100,108,255,0.7); }
+      70%  { box-shadow: 0 0 0 16px rgba(100,108,255,0);   }
+      100% { box-shadow: 0 0 0 0    rgba(100,108,255,0);   }
+    }
+
+    /* Voice panel (help request) */
     #voice-panel {
       position: fixed; bottom: 90px; left: 24px; width: 320px;
-      background: rgba(20, 20, 30, 0.95); border-radius: 12px; padding: 16px;
+      background: rgba(20,20,30,0.95); border-radius: 12px; padding: 16px;
       z-index: 9999; pointer-events: all;
       display: none; flex-direction: column; gap: 10px;
       box-shadow: 0 4px 24px rgba(0,0,0,0.6);
     }
     #voice-panel.visible { display: flex; }
-
-    #panel-label { color: rgba(255,255,255,0.6); font-size: 12px; font-family: sans-serif; text-align: center; }
-
+    #panel-label { color: rgba(255,255,255,0.6); font-size: 12px; text-align: center; }
     #mic-btn {
       width: 56px; height: 56px; border-radius: 50%; border: none;
       background: #646cff; color: white; font-size: 24px;
       cursor: pointer; align-self: center; transition: background 0.2s;
     }
-    #mic-btn.recording { background: #c0392b; animation: helpPulse 1s infinite; }
-
+    #mic-btn.recording { background: #c0392b; animation: pulse 1s infinite; }
     #transcript-input {
       background: rgba(255,255,255,0.08); border-radius: 8px; padding: 10px;
       color: #fff; font-size: 13px; min-height: 72px; resize: none;
-      font-family: sans-serif; border: 1px solid rgba(255,255,255,0.15);
-      outline: none; width: 100%;
+      border: 1px solid rgba(255,255,255,0.15); outline: none; width: 100%;
     }
     #transcript-input::placeholder { color: rgba(255,255,255,0.35); }
-
     #send-btn {
       padding: 8px 16px; background: #2ecc71; color: #fff;
-      border: none; border-radius: 8px; font-size: 14px;
-      font-weight: bold; cursor: pointer; display: none;
+      border: none; border-radius: 8px; font-size: 14px; font-weight: bold;
+      cursor: pointer; display: none;
     }
     #send-btn.visible { display: block; }
-
     #cancel-voice-btn {
       padding: 6px 12px; background: transparent; color: rgba(255,255,255,0.5);
       border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
       font-size: 12px; cursor: pointer;
     }
 
-    /* Marco button fallback when SpeechRecognition not available */
-    #marco-btn {
-      position: fixed; bottom: 90px; right: 24px;
-      padding: 10px 18px; background: rgba(100,108,255,0.9); color: #fff;
-      border: none; border-radius: 10px; font-size: 14px; font-weight: bold;
-      cursor: pointer; pointer-events: all; z-index: 9999;
+    /*  Stamp panel */
+    #stamp-panel {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(15,20,35,0.97); border-radius: 16px; padding: 28px 36px;
+      z-index: 9999; pointer-events: all; display: none; flex-direction: column;
+      gap: 16px; align-items: center; text-align: center;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.8); border: 1px solid rgba(100,108,255,0.3);
+      min-width: 320px;
+    }
+    #stamp-panel.visible { display: flex; }
+    #stamp-panel h3 { color: #fff; font-size: 18px; margin: 0; }
+    #stamp-panel p  { color: rgba(255,255,255,0.55); font-size: 13px; margin: 0; }
+    .stamp-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .stamp-btn {
+      padding: 10px 20px; border: none; border-radius: 10px; font-size: 15px;
+      font-weight: bold; cursor: pointer; transition: opacity 0.15s;
+    }
+    .stamp-btn:hover { opacity: 0.85; }
+
+    /* Floating note caption — no bar, just text over the viewport */
+    #note-caption-float {
+      position: fixed;
+      pointer-events: none; z-index: 9997;
+      max-width: 320px;
       display: none;
     }
-    #marco-btn.visible { display: block; }
+    .caption-source {
+      color: rgba(100,108,255,0.95); font-size: 11px; margin-bottom: 3px;
+      text-shadow: 0 0 8px rgba(0,0,0,1), 1px 1px 0 #000, -1px -1px 0 #000;
+      text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700;
+    }
+    .caption-text {
+      color: #fff; font-size: 14px; line-height: 1.5; font-weight: 500;
+      text-shadow:
+        0 0 10px rgba(0,0,0,1),
+        1px  1px 0 rgba(0,0,0,0.9),
+        -1px  1px 0 rgba(0,0,0,0.9),
+        1px -1px 0 rgba(0,0,0,0.9),
+        -1px -1px 0 rgba(0,0,0,0.9);
+    }
+
+    /* Floating note controls — compact, no bar */
+    #note-controls-float {
+      position: fixed;
+      pointer-events: all; z-index: 9998;
+      display: none; align-items: center; gap: 7px;
+      margin-top: 6px;
+    }
+    .np-btn {
+      width: 32px; height: 32px; border-radius: 50%; border: none;
+      background: rgba(18,18,28,0.82); color: #fff; font-size: 14px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s; backdrop-filter: blur(4px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.55);
+    }
+    .np-btn:hover { background: rgba(60,60,90,0.95); }
+    .np-btn.primary {
+      background: rgba(100,108,255,0.88); width: 38px; height: 38px; font-size: 16px;
+    }
+    .np-btn.primary:hover { background: rgba(124,130,255,0.95); }
+    .np-btn.dismiss {
+      background: rgba(50,18,18,0.82); font-size: 12px; width: 26px; height: 26px;
+      color: rgba(255,255,255,0.6);
+    }
+    .np-btn.dismiss:hover { background: rgba(192,57,43,0.88); color: #fff; }
+    #note-progress-wrap {
+      width: 72px; height: 3px; border-radius: 2px;
+      background: rgba(255,255,255,0.15); overflow: hidden;
+    }
+    #note-progress-fill {
+      height: 100%; background: #646cff; width: 0%;
+      transition: width 0.25s linear;
+    }
+
+    /* Past notes history */
+    #history-toggle {
+      position: fixed; top: 14px; right: 14px;
+      background: rgba(18,20,32,0.82); color: rgba(255,255,255,0.55);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+      padding: 5px 11px; font-size: 12px; cursor: pointer; pointer-events: all;
+      z-index: 9999; display: none; backdrop-filter: blur(4px);
+      transition: color 0.15s;
+    }
+    #history-toggle:hover { color: #fff; }
+    #history-toggle.visible { display: block; }
+
+    #history-panel {
+      position: fixed; top: 46px; right: 14px; width: 272px; max-height: 340px;
+      background: rgba(10,12,22,0.97); border-radius: 12px; padding: 12px;
+      z-index: 9999; pointer-events: all; display: none; flex-direction: column;
+      gap: 7px; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.75);
+      border: 1px solid rgba(100,108,255,0.18);
+    }
+    #history-panel.visible { display: flex; }
+    #history-panel h4 {
+      color: rgba(255,255,255,0.4); font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .history-item {
+      background: rgba(255,255,255,0.04); border-radius: 8px; padding: 9px 10px;
+      border: 1px solid rgba(255,255,255,0.05); transition: background 0.15s;
+    }
+    .history-item.has-audio { cursor: pointer; }
+    .history-item.has-audio:hover { background: rgba(100,108,255,0.12); }
+    .hi-text { color: #ccc; font-size: 12px; line-height: 1.4; }
+    .hi-meta { color: rgba(255,255,255,0.28); font-size: 10px; margin-top: 3px; }
+    .history-empty { color: rgba(255,255,255,0.28); font-size: 12px; text-align: center; padding: 10px 0; }
+
+    /* Marco hint toast*/
+    #marco-toast {
+      position: fixed; top: 24px; left: 50%; transform: translateX(-50%) translateY(-12px);
+      background: rgba(100,108,255,0.92); color: #fff;
+      padding: 9px 18px; border-radius: 20px; font-size: 13px; font-weight: 600;
+      pointer-events: none; z-index: 9999;
+      opacity: 0; transition: opacity 0.3s ease, transform 0.3s ease;
+      white-space: nowrap; box-shadow: 0 3px 14px rgba(0,0,0,0.5);
+    }
+    #marco-toast.visible {
+      opacity: 1; transform: translateX(-50%) translateY(0);
+    }
   </style>
 </head>
 <body>
   <canvas id="overlay-canvas"></canvas>
+
   <button id="end-call-btn">End Call</button>
   <div id="help-indicator" title="Having trouble?">❓</div>
-  <button id="marco-btn">🗣 Marco</button>
 
+  <!-- Cooldown progress ring (SVG) -->
+  <svg id="cooldown-ring" viewBox="0 0 60 60">
+    <circle id="cooldown-circle" cx="30" cy="30" r="26" />
+  </svg>
+
+  <!-- Voice request panel -->
   <div id="voice-panel">
     <p id="panel-label">Describe your problem</p>
     <button id="mic-btn">🎤</button>
@@ -98,171 +227,317 @@
     <button id="cancel-voice-btn">Cancel</button>
   </div>
 
-  <script>
-    const canvas     = document.getElementById('overlay-canvas');
-    const ctx        = canvas.getContext('2d');
-    const endBtn     = document.getElementById('end-call-btn');
-    const helpBtn    = document.getElementById('help-indicator');
-    const voicePanel = document.getElementById('voice-panel');
-    const micBtn     = document.getElementById('mic-btn');
-    const input      = document.getElementById('transcript-input');
-    const sendBtn    = document.getElementById('send-btn');
-    const cancelBtn  = document.getElementById('cancel-voice-btn');
-    const marcoBtn   = document.getElementById('marco-btn');
+  <!-- Stamp panel (shown after note plays) -->
+  <div id="stamp-panel">
+    <h3>Did that help?</h3>
+    <p>Let the expert know how it went</p>
+    <div class="stamp-row">
+      <button class="stamp-btn" id="stamp-worked"   style="background:#27ae60;color:#fff">✅ Worked!</button>
+      <button class="stamp-btn" id="stamp-confused"  style="background:#e74c3c;color:#fff">😕 Still confused</button>
+    </div>
+    <button class="stamp-btn" id="stamp-rerecord" style="background:#444;color:#fff;font-size:13px;padding:8px 16px">🎤 Re-record my question</button>
+    <button class="stamp-btn" id="stamp-skip" style="background:transparent;color:rgba(255,255,255,0.35);font-size:12px;padding:6px 12px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">Maybe later</button>
+  </div>
 
-    // ── Canvas resize ──────────────────────────────────────────────────────────
-    function resizeCanvas(w, h) {
+  <!-- Floating note caption (no bar — just text above the note pin) -->
+  <div id="note-caption-float">
+    <div class="caption-source">📌 Expert Note</div>
+    <div class="caption-text" id="note-caption-text">...</div>
+  </div>
+
+  <!-- Floating note controls -->
+  <div id="note-controls-float">
+    <button class="np-btn" id="np-rewind" title="Restart">⏮</button>
+    <button class="np-btn primary" id="np-play" title="Play/Pause">▶</button>
+    <button class="np-btn" id="np-stop" title="Stop">⏹</button>
+    <div id="note-progress-wrap"><div id="note-progress-fill"></div></div>
+    <button class="np-btn dismiss" id="np-dismiss" title="Dismiss note">✕</button>
+  </div>
+
+  <!-- Past notes history -->
+  <button id="history-toggle">📋 Past Notes (<span id="history-count">0</span>)</button>
+  <div id="history-panel">
+    <h4>Past Notes</h4>
+    <div id="history-list"><p class="history-empty">No dismissed notes yet</p></div>
+  </div>
+
+  <!-- Marco hint toast (shown when a note arrives) -->
+  <div id="marco-toast">🎯 Say "Marco" to locate the note</div>
+
+  <script>
+    const canvas   = document.getElementById('overlay-canvas');
+    const ctx      = canvas.getContext('2d');
+    const endBtn   = document.getElementById('end-call-btn');
+    const helpBtn  = document.getElementById('help-indicator');
+    const cooldownRingEl  = document.getElementById('cooldown-ring');
+    const cooldownCircle  = document.getElementById('cooldown-circle');
+    const voicePanel      = document.getElementById('voice-panel');
+    const micBtn          = document.getElementById('mic-btn');
+    const input           = document.getElementById('transcript-input');
+    const sendBtn         = document.getElementById('send-btn');
+    const cancelBtn       = document.getElementById('cancel-voice-btn');
+    const stampPanel      = document.getElementById('stamp-panel');
+    const captionFloat    = document.getElementById('note-caption-float');
+    const captionText     = document.getElementById('note-caption-text');
+    const controlsFloat   = document.getElementById('note-controls-float');
+    const npPlay          = document.getElementById('np-play');
+    const npRewind        = document.getElementById('np-rewind');
+    const npStop          = document.getElementById('np-stop');
+    const npDismiss       = document.getElementById('np-dismiss');
+    const npFill          = document.getElementById('note-progress-fill');
+    const historyToggle   = document.getElementById('history-toggle');
+    const historyPanel    = document.getElementById('history-panel');
+    const historyList     = document.getElementById('history-list');
+    const historyCount    = document.getElementById('history-count');
+    const marcoToast      = document.getElementById('marco-toast');
+
+    let marcoToastTimer = null;
+    function showMarcoToast() {
+      clearTimeout(marcoToastTimer);
+      marcoToast.classList.add('visible');
+      marcoToastTimer = setTimeout(() => marcoToast.classList.remove('visible'), 4000);
+    }
+
+    // Canvas resize 
+      function resizeCanvas(w, h) {
       canvas.width  = w || window.innerWidth;
       canvas.height = h || window.innerHeight;
     }
     resizeCanvas();
     window.electron.onBounds(({ width, height }) => resizeCanvas(width, height));
 
-    // ── State ──────────────────────────────────────────────────────────────────
-    let noviceX = 0.5, noviceY = 0.5; // updated by main process cursor poll
-    let helpVisible = false;           // true when stuck detector says stuck
+    // State -----------------------------------------------------
+    let noviceX = 0.5, noviceY = 0.5;
+    let panelOpenLocal = false;
+    let activeNoteIdx  = -1;
+    let noteAudio      = null;
+    let ttsSpeaking    = false;
+    let ttsUtterance   = null;
 
-    // Marco Polo notes — hidden until novice cursor hovers
-    // { x, y, text }  — x/y are normalised 0–1
-    const marcoPoloNotes = [];
+    // marcoNotes: { x, y, text, audioSrc, revealed, dismissed }
+    const marcoNotes   = [];
+    const notesHistory = [];
+    const rings        = [];
 
-    const rings = []; // sonar rings: { x, y, radius, alpha }
+    // Help cooldown
+    const HELP_COOLDOWN_MS = 90000; // 90 s
+    let cooldownRafId  = null;
+    let cooldownStart  = 0;
+    let isStuckNow     = false;
+    let helpVisible    = false;
+    const CIRC = 2 * Math.PI * 26; // ~163.4
 
-    // ── Lazy animation loop ────────────────────────────────────────────────────
-    // Only runs when there's something to draw (rings or visible notes).
-    // Keeping the rAF idle when nothing is happening is what prevents mouse lag.
-    let rafId = null;
-    function scheduleAnimate() {
-      if (!rafId) rafId = requestAnimationFrame(animateFrame);
+    function startCooldown() {
+      helpVisible = false;
+      helpBtn.classList.remove('visible');
+      cooldownStart = Date.now();
+      cooldownRingEl.classList.add('visible');
+
+      function tick() {
+        const pct = Math.min((Date.now() - cooldownStart) / HELP_COOLDOWN_MS, 1);
+        // dashoffset goes from CIRC (empty) -> 0 (full drawn)
+        cooldownCircle.style.strokeDashoffset = CIRC * (1 - pct);
+        if (pct < 1) {
+          cooldownRafId = requestAnimationFrame(tick);
+        } else {
+          cooldownRafId = null;
+          cooldownRingEl.classList.remove('visible');
+          cooldownCircle.style.strokeDashoffset = CIRC;
+          if (isStuckNow) {
+            helpVisible = true;
+            helpBtn.classList.add('visible');
+            openVoicePanel();  // auto-reopen after cooldown if still stuck
+          }
+        }
+      }
+      cooldownRafId = requestAnimationFrame(tick);
     }
 
-    function wrapText(context, text, maxWidth) {
-      const words = text.split(' ');
-      const lines = [];
-      let current = '';
-      for (const word of words) {
-        const test = current ? current + ' ' + word : word;
-        if (context.measureText(test).width > maxWidth && current) {
-          lines.push(current); current = word;
-        } else { current = test; }
+    // onStuck fires every 500ms and oscillates (ML model is noisy).
+    // Only act on the first true edge; never clear on false, startCooldown() resets.
+    window.electron.onStuck((stuck) => {
+      isStuckNow = stuck;
+      if (stuck && !helpVisible && !cooldownRafId) {
+        helpVisible = true;
+        helpBtn.classList.add('visible');
+        // Show button only — user clicks it to open panel
       }
-      if (current) lines.push(current);
+    });
+
+    // rAF draw loop \
+    let rafId = null;
+    function scheduleAnimate() { if (!rafId) rafId = requestAnimationFrame(animateFrame); }
+
+    function wrapText(context, text, maxWidth) {
+      const words = text.split(' '), lines = [];
+      let cur = '';
+      for (const w of words) {
+        const t = cur ? cur + ' ' + w : w;
+        if (context.measureText(t).width > maxWidth && cur) { lines.push(cur); cur = w; }
+        else cur = t;
+      }
+      if (cur) lines.push(cur);
       return lines;
     }
 
     function animateFrame() {
       rafId = null;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let needsMore = false;
 
-      // Draw any Marco Polo note that the novice is hovering over
-      let needsMoreFrames = false;
-      for (const note of marcoPoloNotes) {
+      for (let i = 0; i < marcoNotes.length; i++) {
+        const note = marcoNotes[i];
+        if (note.dismissed) continue;
         const dist = Math.hypot(note.x - noviceX, note.y - noviceY);
-        note.visible = dist < 0.07; // show within ~7% of screen width
-        if (note.visible) {
-          const px = note.x * canvas.width;
-          const py = note.y * canvas.height;
-          const padding  = 8;
-          const maxWidth = 180;
-          ctx.font = '12px sans-serif';
-          const lines = wrapText(ctx, note.text, maxWidth);
-          const boxH  = lines.length * 16 + padding * 2;
+        if (dist < 0.025) note.revealed = true;
 
-          // Pin dot (always drawn even without hover, tiny so it's subtle)
+        const px = note.x * canvas.width;
+        const py = note.y * canvas.height;
+
+        if (!note.revealed) {
           ctx.beginPath();
-          ctx.arc(px, py, 5, 0, 2 * Math.PI);
-          ctx.fillStyle = '#e67e22';
+          ctx.arc(px, py, 4, 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(230,126,34,0.25)';
           ctx.fill();
-
-          // Note box
-          ctx.fillStyle = 'rgba(255, 235, 150, 0.95)';
-          ctx.beginPath();
-          ctx.roundRect(px + 10, py - 10, maxWidth + padding * 2, boxH, 6);
-          ctx.fill();
-
-          ctx.fillStyle = '#333';
-          lines.forEach((line, i) => ctx.fillText(line, px + 10 + padding, py - 10 + padding + 14 + i * 16));
-          needsMoreFrames = true;
+          needsMore = true;
+          continue;
         }
+
+        const isActive = i === activeNoteIdx;
+        const padding = 8, maxW = 180;
+        ctx.font = '12px sans-serif';
+        const lines = wrapText(ctx, note.text, maxW);
+        const boxH  = lines.length * 16 + padding * 2 + (isActive ? 0 : 20);
+
+        ctx.beginPath();
+        ctx.arc(px, py, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = isActive ? '#646cff' : '#e67e22';
+        ctx.fill();
+
+        ctx.fillStyle = isActive ? 'rgba(100,108,255,0.95)' : 'rgba(255,235,150,0.97)';
+        ctx.shadowColor = 'rgba(0,0,0,0.25)';
+        ctx.shadowBlur  = 8;
+        ctx.beginPath();
+        ctx.roundRect(px + 10, py - 10, maxW + padding * 2, boxH, 8);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = isActive ? '#fff' : '#333';
+        lines.forEach((line, li) =>
+          ctx.fillText(line, px + 10 + padding, py - 10 + padding + 14 + li * 16));
+
+        if (!isActive) {
+          ctx.fillStyle = 'rgba(100,108,255,0.8)';
+          ctx.font = '10px sans-serif';
+          ctx.fillText('▶ tap to play', px + 10 + padding, py - 10 + boxH - 6);
+        }
+        needsMore = true;
       }
 
-      // Draw sonar rings
+      // Sonar rings
       for (let i = rings.length - 1; i >= 0; i--) {
         const r = rings[i];
-        r.radius += 1.5;
-        r.alpha  -= 0.012;
+        r.radius += 1.5; r.alpha -= 0.012;
         if (r.alpha <= 0) { rings.splice(i, 1); continue; }
-        needsMoreFrames = true;
+        needsMore = true;
         ctx.beginPath();
         ctx.arc(r.x, r.y, r.radius, 0, 2 * Math.PI);
-        ctx.strokeStyle = `rgba(100, 108, 255, ${r.alpha})`;
+        ctx.strokeStyle = `rgba(100,108,255,${r.alpha})`;
         ctx.lineWidth = 2;
         ctx.stroke();
       }
 
-      if (needsMoreFrames) scheduleAnimate();
+      if (needsMore) scheduleAnimate();
     }
 
     function spawnRings(px, py) {
-      for (let i = 0; i < 3; i++) {
-        setTimeout(() => { rings.push({ x: px, y: py, radius: 0, alpha: 0.8 }); scheduleAnimate(); }, i * 200);
+      for (let i = 0; i < 4; i++) {
+        setTimeout(() => { rings.push({ x: px, y: py, radius: 0, alpha: 0.9 }); scheduleAnimate(); }, i * 180);
       }
     }
 
-    // ── Zone-change from main process (replaces { forward:true } entirely) ─────
-    // Main polls OS cursor position every 50ms and tells us:
-    //   inEndZone  — cursor near End Call button (bottom-right)
-    //   inHelpZone — cursor near Help indicator + voice panel (bottom-left)
-    //   normX/Y    — cursor normalised position for note proximity
+    // Click-catcher (full-screen, only active over revealed notes)
+    const clickCatcher = document.createElement('div');
+    Object.assign(clickCatcher.style, {
+      position: 'fixed', inset: '0', zIndex: '9990',
+      pointerEvents: 'none', background: 'transparent',
+    });
+    document.body.appendChild(clickCatcher);
+
+    // Zone-change listener
     window.electron.onZoneChange(({ inEndZone, inHelpZone, normX, normY }) => {
       noviceX = normX;
       noviceY = normY;
 
-      // Show End Call button only when cursor is in its zone
       endBtn.classList.toggle('visible', inEndZone);
+      helpBtn.classList.toggle('visible', helpVisible);
 
-      // Show Help indicator only when stuck AND cursor is in help zone
-      helpBtn.classList.toggle('visible', helpVisible && inHelpZone);
+      const overNote = marcoNotes.some(n =>
+        !n.dismissed && n.revealed && Math.hypot(n.x - normX, n.y - normY) < 0.04);
+      clickCatcher.style.pointerEvents = overNote ? 'all' : 'none';
+      if (overNote && !panelOpenLocal) window.electron.setIgnoreMouse(false);
+      else if (!overNote && !panelOpenLocal && !inEndZone && !inHelpZone)
+        window.electron.setIgnoreMouse(true);
 
-      // Show Marco fallback button only when notes are waiting and cursor is in end zone area
-      marcoBtn.classList.toggle('visible', marcoPoloNotes.length > 0 && !hasNativeSpeech);
-
-      // Redraw canvas if any notes exist (to update hover state)
-      if (marcoPoloNotes.length > 0) scheduleAnimate();
+      if (activeNoteIdx >= 0) positionFloatingUI(activeNoteIdx);
+      if (marcoNotes.length > 0) scheduleAnimate();
     });
 
-    // ── Stuck signal ───────────────────────────────────────────────────────────
-    window.electron.onStuck((stuck) => {
-      helpVisible = stuck;
-      // Actual visibility depends on zone — zone-change will update the class
+    function positionFloatingUI(noteIdx) {
+      const note = marcoNotes[noteIdx];
+      if (!note || note.dismissed) return;
+      const px = note.x * window.innerWidth;
+      const py = note.y * window.innerHeight;
+      const capX = Math.min(px + 14, window.innerWidth  - 340);
+      const capY = Math.max(py - 96, 10);
+      captionFloat.style.left  = capX + 'px';
+      captionFloat.style.top   = capY + 'px';
+      controlsFloat.style.left = capX + 'px';
+      controlsFloat.style.top  = (capY + captionFloat.offsetHeight + 8) + 'px';
+    }
+
+    clickCatcher.addEventListener('click', (e) => {
+      const nx = e.clientX / window.innerWidth;
+      const ny = e.clientY / window.innerHeight;
+      let closest = -1, closestDist = Infinity;
+      for (let i = 0; i < marcoNotes.length; i++) {
+        if (!marcoNotes[i].revealed || marcoNotes[i].dismissed) continue;
+        const d = Math.hypot(marcoNotes[i].x - nx, marcoNotes[i].y - ny);
+        if (d < 0.04 && d < closestDist) { closestDist = d; closest = i; }
+      }
+      if (closest !== -1) openNotePlayer(closest);
     });
 
-    // ── End Call ───────────────────────────────────────────────────────────────
+    // End call 
     endBtn.addEventListener('click', () => window.electron.exitOverlayMode());
 
-    // ── Help indicator → voice panel ───────────────────────────────────────────
-    helpBtn.addEventListener('click', () => {
+    // Voice panel helpers ----------------------------------------------
+    helpBtn.addEventListener('click', () => openVoicePanel());
+
+    function openVoicePanel() {
+      stampPanel.classList.remove('visible');
       voicePanel.classList.add('visible');
+      panelOpenLocal = true;
+      window.electron.setIgnoreMouse(false);
       window.electron.setPanelOpen(true);
       window.electron.setFocusable(true);
       window.electron.focusOverlay();
-      input.focus();
-    });
+      setTimeout(() => input.focus(), 80);
+    }
 
-    function closePanel() {
+    function closeVoicePanel() {
       voicePanel.classList.remove('visible');
+      panelOpenLocal = false;
       window.electron.setPanelOpen(false);
       window.electron.setFocusable(false);
     }
 
     input.addEventListener('input', () => {
-      const placeholder = input.value === 'Recording...' || input.value === 'Transcribing...';
-      sendBtn.classList.toggle('visible', !placeholder && input.value.trim().length > 0);
+      const ph = input.value === 'Recording...' || input.value === 'Transcribing...';
+      sendBtn.classList.toggle('visible', !ph && input.value.trim().length > 0);
     });
 
-    // ── Mic button ─────────────────────────────────────────────────────────────
     let isRecording = false;
-
     micBtn.addEventListener('click', () => {
       isRecording = !isRecording;
       micBtn.classList.toggle('recording', isRecording);
@@ -272,73 +547,249 @@
     });
 
     window.electron.onTranscript((raw) => {
-      let msg;
-      try { msg = JSON.parse(raw); } catch { return; }
-
+      let msg; try { msg = JSON.parse(raw); } catch { return; }
       if (msg.type === 'interim') {
         input.value = msg.text;
-        const placeholder = msg.text === 'Recording...' || msg.text === 'Transcribing...';
-        sendBtn.classList.toggle('visible', !placeholder && msg.text.trim().length > 0);
-
+        const ph = msg.text === 'Recording...' || msg.text === 'Transcribing...';
+        sendBtn.classList.toggle('visible', !ph && msg.text.trim().length > 0);
       } else if (msg.type === 'final') {
         isRecording = false;
-        micBtn.classList.remove('recording');
-        micBtn.textContent = '🎤';
+        micBtn.classList.remove('recording'); micBtn.textContent = '🎤';
         if (msg.text) { input.value = msg.text; sendBtn.classList.add('visible'); }
-        // Make overlay focusable so novice can edit the transcription
-        window.electron.setFocusable(true);
-        window.electron.focusOverlay();
-        input.focus();
-
+        window.electron.setFocusable(true); window.electron.focusOverlay(); input.focus();
       } else if (msg.type === 'error') {
         isRecording = false;
-        micBtn.classList.remove('recording');
-        micBtn.textContent = '🎤';
+        micBtn.classList.remove('recording'); micBtn.textContent = '🎤';
         if (input.value === 'Recording...') input.value = '';
-        input.placeholder = msg.text || 'Voice unavailable — type your problem here';
-        window.electron.setFocusable(true);
-        window.electron.focusOverlay();
-        input.focus();
+        input.placeholder = msg.text || 'Voice unavailable — type here';
+        window.electron.setFocusable(true); window.electron.focusOverlay(); input.focus();
       }
     });
 
     sendBtn.addEventListener('click', () => {
-      const text = input.value.trim();
-      if (!text) return;
+      const text = input.value.trim(); if (!text) return;
       window.electron.sendHelpRequest(text);
-      helpVisible = false;
-      input.value = '';
-      sendBtn.classList.remove('visible');
-      isRecording = false;
-      micBtn.classList.remove('recording');
-      micBtn.textContent = '🎤';
-      closePanel();
+      input.value = ''; sendBtn.classList.remove('visible');
+      isRecording = false; micBtn.classList.remove('recording'); micBtn.textContent = '🎤';
+      closeVoicePanel();
+      startCooldown();
     });
 
     cancelBtn.addEventListener('click', () => {
       if (isRecording) { isRecording = false; window.electron.startRecording(); }
-      input.value = '';
-      sendBtn.classList.remove('visible');
-      micBtn.classList.remove('recording');
-      micBtn.textContent = '🎤';
-      closePanel();
+      input.value = ''; sendBtn.classList.remove('visible');
+      micBtn.classList.remove('recording'); micBtn.textContent = '🎤';
+      closeVoicePanel();
     });
 
-    // ── Marco Polo ─────────────────────────────────────────────────────────────
-    // When the expert drops a sticky note, it goes into marcoPoloNotes[].
-    // The note is invisible until the novice hovers their cursor over it.
-    // The novice says "Marco" → system plays a spatial "Polo" tone from the note's
-    // position. Haptics fire when close. Sonar rings appear when very close.
-
-    let audioCtx = null;
-    function getAudioCtx() {
-      if (!audioCtx) audioCtx = new AudioContext();
-      return audioCtx;
+    // Stamp panel -------------------------------S
+    function showStampPanel() {
+      stampPanel.classList.add('visible');
+      panelOpenLocal = true;
+      window.electron.setIgnoreMouse(false);   // immediate — don't wait for panelOpen IPC
+      window.electron.setPanelOpen(true);
+      window.electron.setFocusable(true);
+      window.electron.focusOverlay();
     }
 
-    // Play a short spatial "Polo" beep from a normalised screen position
-    function playPolo(normX, normY) {
+    function closeStampPanel() {
+      stampPanel.classList.remove('visible');
+      panelOpenLocal = false;
+      window.electron.setPanelOpen(false);
+      window.electron.setFocusable(false);
+    }
+
+    document.getElementById('stamp-worked').addEventListener('click', () => {
+      window.electron.sendStamp('worked'); closeStampPanel();
+    });
+    document.getElementById('stamp-confused').addEventListener('click', () => {
+      window.electron.sendStamp('confused'); closeStampPanel();
+    });
+    document.getElementById('stamp-rerecord').addEventListener('click', () => {
+      closeStampPanel(); openVoicePanel();
+    });
+    document.getElementById('stamp-skip').addEventListener('click', () => {
+      closeStampPanel();
+    });
+
+    // Note player ---------------------------------------------
+    function openNotePlayer(noteIdx) {
+      if (noteIdx < 0 || noteIdx >= marcoNotes.length) return;
+      activeNoteIdx = noteIdx;
+      const note = marcoNotes[noteIdx];
+
+      stopCurrentPlayback();
+      captionText.textContent = note.text;
+      npFill.style.width = '0%';
+      npPlay.textContent = '▶';
+
+      captionFloat.style.display  = 'block';
+      controlsFloat.style.display = 'flex';
+      positionFloatingUI(noteIdx);
+
+      panelOpenLocal = true;
+      window.electron.setIgnoreMouse(false);
+      window.electron.setPanelOpen(true);
+      scheduleAnimate();
+      startNotePlayback(note);
+    }
+
+    function startNotePlayback(note) {
+      stopCurrentPlayback();
+      if (note.audioSrc) {
+        noteAudio = new Audio(note.audioSrc);
+        noteAudio.ontimeupdate = () => {
+          if (noteAudio.duration)
+            npFill.style.width = (noteAudio.currentTime / noteAudio.duration * 100) + '%';
+        };
+        noteAudio.onended = () => {
+          npPlay.textContent = '▶';
+          npFill.style.width = '100%';
+          onPlaybackEnded();
+        };
+        noteAudio.play();
+        npPlay.textContent = '⏸';
+      } else {
+        playTTS(note.text);
+      }
+    }
+
+    // Trigger stamp panel after note finishes playing
+    function onPlaybackEnded() {
+      showStampPanel();
+    }
+
+    function stopCurrentPlayback() {
+      if (noteAudio) { noteAudio.pause(); noteAudio.currentTime = 0; noteAudio = null; }
+      if (ttsUtterance) {
+        speechSynthesis.cancel(); ttsUtterance = null; ttsSpeaking = false;
+        npFill.style.width = '0%'; npPlay.textContent = '▶';
+      }
+    }
+
+    function playTTS(text) {
+      if (!window.speechSynthesis) return;
+      speechSynthesis.cancel();
+      ttsUtterance = new SpeechSynthesisUtterance(text);
+      ttsUtterance.rate = 0.95;
+      ttsSpeaking = true;
+      npPlay.textContent = '⏸';
+      const charCount = text.length;
+      ttsUtterance.onboundary = (e) => {
+        if (e.charIndex != null)
+          npFill.style.width = (e.charIndex / charCount * 100) + '%';
+      };
+      ttsUtterance.onend = () => {
+        ttsSpeaking = false; ttsUtterance = null;
+        npPlay.textContent = '▶'; npFill.style.width = '100%';
+        onPlaybackEnded();
+      };
+      speechSynthesis.speak(ttsUtterance);
+    }
+
+    npPlay.addEventListener('click', () => {
+      const note = marcoNotes[activeNoteIdx]; if (!note) return;
+      if (note.audioSrc && noteAudio) {
+        if (noteAudio.paused) { noteAudio.play(); npPlay.textContent = '⏸'; }
+        else                  { noteAudio.pause(); npPlay.textContent = '▶'; }
+      } else if (note.audioSrc && !noteAudio) {
+        startNotePlayback(note);
+      } else {
+        if (ttsSpeaking) { speechSynthesis.pause(); ttsSpeaking = false; npPlay.textContent = '▶'; }
+        else if (speechSynthesis.paused) { speechSynthesis.resume(); ttsSpeaking = true; npPlay.textContent = '⏸'; }
+        else { playTTS(note.text); }
+      }
+    });
+
+    npRewind.addEventListener('click', () => {
+      const note = marcoNotes[activeNoteIdx]; if (!note) return;
+      npFill.style.width = '0%';
+      if (note.audioSrc && noteAudio) { noteAudio.currentTime = 0; noteAudio.play(); npPlay.textContent = '⏸'; }
+      else { playTTS(note.text); }
+    });
+
+    npStop.addEventListener('click', () => {
+      stopCurrentPlayback();
+      npPlay.textContent = '▶'; npFill.style.width = '0%';
+      // Collapse the note player without dismissing the note
+      captionFloat.style.display  = 'none';
+      controlsFloat.style.display = 'none';
+      activeNoteIdx  = -1;
+      panelOpenLocal = false;
+      window.electron.setPanelOpen(false);
+      window.electron.setFocusable(false);
+    });
+
+    // Dismiss note
+    npDismiss.addEventListener('click', () => {
+      if (activeNoteIdx < 0 || !marcoNotes[activeNoteIdx]) return;
+      stopCurrentPlayback();
+      const note = marcoNotes[activeNoteIdx];
+      const idx  = activeNoteIdx;
+      note.dismissed = true;
+
+      // Archive
+      notesHistory.push({
+        text:     note.text,
+        hasAudio: !!note.audioSrc,
+        audioSrc: note.audioSrc || null,
+        time:     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+      renderHistory();
+
+      // Tell expert to remove it from their canvas
+      window.electron.dismissNote(idx);
+
+      captionFloat.style.display  = 'none';
+      controlsFloat.style.display = 'none';
+      activeNoteIdx  = -1;
+      panelOpenLocal = false;
+      window.electron.setPanelOpen(false);
+      window.electron.setFocusable(false);
+      scheduleAnimate();
+    });
+
+    // History -----------------------------------------------
+    function renderHistory() {
+      historyCount.textContent = notesHistory.length;
+      historyToggle.classList.toggle('visible', notesHistory.length > 0);
+      if (!notesHistory.length) {
+        historyList.innerHTML = '<p class="history-empty">No dismissed notes yet</p>';
+        return;
+      }
+      historyList.innerHTML = '';
+      [...notesHistory].reverse().forEach((n) => {
+        const div = document.createElement('div');
+        div.className = 'history-item' + (n.hasAudio ? ' has-audio' : '');
+        div.innerHTML = `
+          <div class="hi-text">${n.text}</div>
+          <div class="hi-meta">${n.time}${n.hasAudio ? ' · 🔊 tap to replay' : ''}</div>
+        `;
+        if (n.audioSrc) {
+          div.addEventListener('click', () => new Audio(n.audioSrc).play());
+        }
+        historyList.appendChild(div);
+      });
+    }
+
+    historyToggle.addEventListener('click', () => {
+      const open = historyPanel.classList.toggle('visible');
+      panelOpenLocal = open;
+      window.electron.setPanelOpen(open);
+      if (open) { window.electron.setFocusable(true); window.electron.focusOverlay(); }
+      else       { window.electron.setFocusable(false); }
+    });
+
+    // Audio context ------------------------------------
+    let audioCtx = null;
+    function getAudioCtx() { if (!audioCtx) audioCtx = new AudioContext(); return audioCtx; }
+
+    // Polo sound — spoken "Polo" + quiet HRTF tick for directionality 
+    async function playPolo(normX, normY, dist) {
       const ac = getAudioCtx();
+      if (ac.state !== 'running') await ac.resume();
+
+      // Short spatial tick — gives the HRTF engine something to work with
       const panner = ac.createPanner();
       panner.panningModel  = 'HRTF';
       panner.distanceModel = 'inverse';
@@ -350,97 +801,71 @@
       panner.positionZ.value = -1;
 
       const gain = ac.createGain();
-      gain.gain.setValueAtTime(0.6, ac.currentTime);
+      gain.gain.setValueAtTime(0.7, ac.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.7);
 
       const osc = ac.createOscillator();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(523, ac.currentTime);       // C5
-      osc.frequency.exponentialRampToValueAtTime(330, ac.currentTime + 0.4); // E4
-      osc.connect(panner);
-      panner.connect(gain);
-      gain.connect(ac.destination);
-      osc.start(ac.currentTime);
-      osc.stop(ac.currentTime + 0.7);
+      osc.frequency.value = 880;
+      osc.connect(panner); panner.connect(gain); gain.connect(ac.destination);
+      osc.start(ac.currentTime); osc.stop(ac.currentTime + 0.7);
+
+      // Spoken "Polo," pitch climbs as cursor closes in (far=low, close=high)
+      // (couldn't get the spatial audio to work with tts)
+      if (window.speechSynthesis) {
+        speechSynthesis.cancel();
+        const utter    = new SpeechSynthesisUtterance('Polo');
+        utter.rate     = 1.1;
+        utter.pitch    = Math.max(0.5, 1.9 - dist * 5); // 0.5 far -> ~1.9 right on it
+        utter.volume   = 1;
+        speechSynthesis.speak(utter);
+      }
     }
 
-    // Called whenever "Marco" is detected (speech or button)
+    // Marco handler ------------------------------
     function onMarco() {
-      if (marcoPoloNotes.length === 0) return;
-      const note = marcoPoloNotes[0]; // respond to first active note
+      const active = marcoNotes.filter(n => !n.dismissed);
+      if (!active.length) return;
 
-      // Spatial Polo tone from note's position
-      playPolo(note.x, note.y);
+      // Find nearest active note to cursor
+      let nearest = active[0];
+      let nearestDist = Math.hypot(nearest.x - noviceX, nearest.y - noviceY);
+      for (const n of active) {
+        const d = Math.hypot(n.x - noviceX, n.y - noviceY);
+        if (d < nearestDist) { nearest = n; nearestDist = d; }
+      }
 
-      const dist = Math.hypot(note.x - noviceX, note.y - noviceY);
+      // Spatial Polo sound + voice
+      playPolo(nearest.x, nearest.y, nearestDist);
 
-      // Haptics — stronger the closer you are
+      // Haptic, intensity scales with proximity
       if (navigator.vibrate) {
-        if (dist < 0.08)       navigator.vibrate([80, 40, 80]);  // very close
-        else if (dist < 0.2)   navigator.vibrate(60);            // close
-        else                   navigator.vibrate(30);            // far
+        if      (nearestDist < 0.06) navigator.vibrate([100, 40, 100, 40, 100]);
+        else if (nearestDist < 0.12) navigator.vibrate([80, 40, 80]);
+        else if (nearestDist < 0.25) navigator.vibrate(60);
+        else                         navigator.vibrate(25);
       }
 
-      // Sonar rings only when very close
-      if (dist < 0.08) {
-        spawnRings(note.x * canvas.width, note.y * canvas.height);
+      // Sonar rings when cursor is right on the note (inside the reveal zone)
+      if (nearestDist < 0.025) {
+        spawnRings(nearest.x * canvas.width, nearest.y * canvas.height);
       }
     }
 
-    // Try native SpeechRecognition; fall back to a button if unavailable
-    let hasNativeSpeech = false;
-    let recognition = null;
+    window.electron.onMarcoDetected(() => {
+      // Visual debug flash — proves IPC arrived even if audio fails
+      document.body.style.outline = '3px solid #646cff';
+      setTimeout(() => { document.body.style.outline = ''; }, 400);
+      onMarco();
+    });
 
-    function startMarcoListening() {
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) return; // button fallback is shown via zone-change handler
-      hasNativeSpeech = true;
-      marcoBtn.classList.remove('visible'); // hide fallback button
-
-      recognition = new SR();
-      recognition.continuous    = true;
-      recognition.interimResults = true;
-      recognition.lang           = 'en-US';
-
-      recognition.onresult = (event) => {
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const t = event.results[i][0].transcript.toLowerCase();
-          if (t.includes('marco')) onMarco();
-        }
-      };
-
-      recognition.onerror = (e) => {
-        // If speech API errors, show the button fallback
-        if (e.error !== 'no-speech') { hasNativeSpeech = false; }
-      };
-
-      // Auto-restart — recognition stops after ~60s of silence
-      recognition.onend = () => {
-        if (marcoPoloNotes.length > 0 && hasNativeSpeech) recognition.start();
-      };
-
-      recognition.start();
-    }
-
-    function stopMarcoListening() {
-      if (recognition) { recognition.onend = null; recognition.stop(); recognition = null; }
-      marcoBtn.classList.remove('visible');
-    }
-
-    // Marco fallback button
-    marcoBtn.addEventListener('click', onMarco);
-
-    // ── Incoming cursor / note messages from expert ────────────────────────────
-    window.electron.onCursor(({ type, x, y, text }) => {
+    // Incoming sticky-note from expert
+    window.electron.onCursor(({ type, x, y, text, audioSrc }) => {
       if (type === 'sticky-note') {
-        // New Marco Polo note — don't draw it yet, start listening
-        marcoPoloNotes.push({ x, y, text, visible: false });
-        startMarcoListening();
-        scheduleAnimate(); // kick off loop so hover detection works
-        return;
+        marcoNotes.push({ x, y, text, audioSrc: audioSrc || null, revealed: false, dismissed: false });
+        scheduleAnimate();
+        showMarcoToast(); // tell novice to start saying "Marco"
       }
-      // Regular cursor messages currently unused on novice side
-      // (ghost cursor deliberately removed — kept as hook for future use)
     });
 
   </script>
